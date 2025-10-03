@@ -229,20 +229,20 @@ radar_sinistro/
 │   ├── processed/              # Dados limpos
 │   ├── cache/                  # Cache de APIs
 │   └── sample/                 # Dados de exemplo
-├── 📂 database/                # Módulo de banco (DEV 6)
+├── 📂 database/                # Módulo de banco 
 │   ├── database.py            # Conexão e setup
 │   ├── models.py              # Modelos de dados
 │   ├── crud_operations.py     # Operações CRUD
 │   └── init_db.sql           # Schema do banco
 ├── 📂 src/                     # Código fonte
-│   ├── data_processing/       # Processamento (DEV 2)
-│   ├── ml/                    # Machine Learning (DEV 1)
-│   ├── weather/               # APIs climáticas (DEV 3)
-│   ├── geo/                   # Geolocalização (DEV 4)
-│   ├── risk/                  # Análise de risco (DEV 5)
-│   ├── api/                   # Backend API (DEV 7)
-│   └── viz/                   # Visualizações (DEV 9)
-├── 📂 frontend/                # Interface web (DEV 8)
+│   ├── data_processing/       # Processamento 
+│   ├── ml/                    # Machine Learning 
+│   ├── weather/               # APIs climáticas 
+│   ├── geo/                   # Geolocalização 
+│   ├── risk/                  # Análise de risco 
+│   ├── api/                   # Backend API 
+│   └── viz/                   # Visualizações 
+├── 📂 frontend/                # Interface web 
 ├── 📂 config/                  # Configurações
 ├── 📂 scripts/                 # Scripts utilitários
 ├── 📂 tests/                   # Testes automatizados
@@ -290,13 +290,6 @@ df = processor.load_and_process('arquivo.csv', encoding='utf-8')
 ```
 
 ## 🚀 Próximos Passos
-
-### Para Produção
-1. **Deploy**: Configurar servidor web
-2. **APIs reais**: Integrar com fornecedores de dados
-3. **Monitoramento**: Logs e alertas
-4. **Segurança**: Autenticação e autorização
-5. **Performance**: Otimização de queries
 
 ### Funcionalidades Futuras
 - 🗺️ Interface web com mapas interativos

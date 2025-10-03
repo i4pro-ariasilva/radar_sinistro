@@ -291,13 +291,6 @@ df = processor.load_and_process('arquivo.csv', encoding='utf-8')
 
 ## 🚀 Próximos Passos
 
-### Para Produção
-1. **Deploy**: Configurar servidor web
-2. **APIs reais**: Integrar com fornecedores de dados
-3. **Monitoramento**: Logs e alertas
-4. **Segurança**: Autenticação e autorização
-5. **Performance**: Otimização de queries
-
 ### Funcionalidades Futuras
 - 🗺️ Interface web com mapas interativos
 - 📱 API REST completa

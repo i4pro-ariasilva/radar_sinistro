@@ -1,14 +1,14 @@
-"""
-Configurações principais do sistema
+﻿"""
+ConfiguraÃ§Ãµes principais do sistema
 """
 
 import os
 from pathlib import Path
 
-# Diretório base do projeto
+# DiretÃ³rio base do projeto
 BASE_DIR = Path(__file__).parent.parent
 
-# Configurações do banco de dados
+# ConfiguraÃ§Ãµes do banco de dados
 DATABASE_CONFIG = {
     'default_db_path': os.path.join(BASE_DIR, 'radar_climatico.db'),
     'backup_dir': os.path.join(BASE_DIR, 'backups'),
@@ -16,7 +16,7 @@ DATABASE_CONFIG = {
     'enable_foreign_keys': True
 }
 
-# Configurações de dados
+# ConfiguraÃ§Ãµes de dados
 DATA_CONFIG = {
     'raw_data_dir': os.path.join(BASE_DIR, 'data', 'raw'),
     'processed_data_dir': os.path.join(BASE_DIR, 'data', 'processed'),
@@ -26,7 +26,7 @@ DATA_CONFIG = {
     'supported_formats': ['csv', 'xlsx', 'xls', 'json', 'parquet']
 }
 
-# Configurações de APIs externas
+# ConfiguraÃ§Ãµes de APIs externas
 API_CONFIG = {
     'weather': {
         'openweather_api_key': os.getenv('OPENWEATHER_API_KEY', ''),
@@ -41,7 +41,7 @@ API_CONFIG = {
     }
 }
 
-# Configurações do modelo ML
+# ConfiguraÃ§Ãµes do modelo ML
 MODEL_CONFIG = {
     'model_dir': os.path.join(BASE_DIR, 'models'),
     'model_filename': 'radar_modelo.pkl',
@@ -55,7 +55,7 @@ MODEL_CONFIG = {
     'random_state': 42
 }
 
-# Configurações de risco
+# ConfiguraÃ§Ãµes de risco
 RISK_CONFIG = {
     'score_thresholds': {
         'baixo': 25,
@@ -73,7 +73,7 @@ RISK_CONFIG = {
     }
 }
 
-# Configurações da API web
+# ConfiguraÃ§Ãµes da API web
 WEB_CONFIG = {
     'host': '127.0.0.1',
     'port': 5000,
@@ -83,7 +83,7 @@ WEB_CONFIG = {
     'rate_limit_per_minute': 100
 }
 
-# Configurações de logging
+# ConfiguraÃ§Ãµes de logging
 LOGGING_CONFIG = {
     'level': 'INFO',
     'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -92,7 +92,7 @@ LOGGING_CONFIG = {
     'backup_count': 5
 }
 
-# Configurações de validação
+# ConfiguraÃ§Ãµes de validaÃ§Ã£o
 VALIDATION_CONFIG = {
     'cep_pattern': r'^\d{5}-\d{3}$',
     'policy_number_min_length': 5,
@@ -104,7 +104,7 @@ VALIDATION_CONFIG = {
     'brazil_lon_bounds': (-73.98, -28.84)
 }
 
-# Configurações de qualidade de dados
+# ConfiguraÃ§Ãµes de qualidade de dados
 QUALITY_CONFIG = {
     'min_completeness_percentage': 80,
     'min_validity_percentage': 90,
@@ -113,16 +113,16 @@ QUALITY_CONFIG = {
     'outlier_factor': 1.5
 }
 
-# Configurações do frontend
+# ConfiguraÃ§Ãµes do frontend
 FRONTEND_CONFIG = {
-    'map_default_center': [-15.7801, -47.9292],  # Brasília
+    'map_default_center': [-15.7801, -47.9292],  # BrasÃ­lia
     'map_default_zoom': 5,
     'map_provider': 'OpenStreetMap',
     'refresh_interval_seconds': 300,  # 5 minutos
     'max_policies_display': 1000
 }
 
-# Configurações de teste
+# ConfiguraÃ§Ãµes de teste
 TEST_CONFIG = {
     'test_db_path': ':memory:',
     'sample_data_size': 100,
@@ -130,9 +130,9 @@ TEST_CONFIG = {
     'test_timeout_seconds': 30
 }
 
-# Função para criar diretórios necessários
+# FunÃ§Ã£o para criar diretÃ³rios necessÃ¡rios
 def create_directories():
-    """Cria diretórios necessários se não existirem"""
+    """Cria diretÃ³rios necessÃ¡rios se nÃ£o existirem"""
     directories = [
         DATABASE_CONFIG['backup_dir'],
         DATA_CONFIG['raw_data_dir'],
@@ -146,28 +146,24 @@ def create_directories():
     for directory in directories:
         os.makedirs(directory, exist_ok=True)
 
-# Função para validar configurações
+# FunÃ§Ã£o para validar configuraÃ§Ãµes
 def validate_config():
-    """Valida se as configurações estão corretas"""
+    """Valida se as configuraÃ§Ãµes estÃ£o corretas"""
     errors = []
     
-    # Verificar se diretório base existe
+    # Verificar se diretÃ³rio base existe
     if not BASE_DIR.exists():
-        errors.append(f"Diretório base não encontrado: {BASE_DIR}")
-    
-    # Verificar configurações de API
-    if not API_CONFIG['weather']['openweather_api_key']:
-        errors.append("OPENWEATHER_API_KEY não configurada")
-    
-    # Verificar limites de validação
+        errors.append(f"DiretÃ³rio base nÃ£o encontrado: {BASE_DIR}")
+        
+    # Verificar limites de validaÃ§Ã£o
     if VALIDATION_CONFIG['min_insurance_value'] >= VALIDATION_CONFIG['max_insurance_value']:
-        errors.append("Limites de valor de seguro inválidos")
+        errors.append("Limites de valor de seguro invÃ¡lidos")
     
     return errors
 
-# Função para obter configuração por ambiente
+# FunÃ§Ã£o para obter configuraÃ§Ã£o por ambiente
 def get_config_for_environment(env: str = 'development'):
-    """Retorna configurações específicas para o ambiente"""
+    """Retorna configuraÃ§Ãµes especÃ­ficas para o ambiente"""
     if env == 'production':
         config = {
             **globals(),
@@ -198,16 +194,17 @@ def get_config_for_environment(env: str = 'development'):
     
     return config
 
-# Carregar configurações do ambiente ao importar
+# Carregar configuraÃ§Ãµes do ambiente ao importar
 if __name__ == "__main__":
-    # Criar diretórios necessários
+    # Criar diretÃ³rios necessÃ¡rios
     create_directories()
     
-    # Validar configurações
+    # Validar configuraÃ§Ãµes
     errors = validate_config()
     if errors:
-        print("Erros de configuração encontrados:")
+        print("Erros de configuraÃ§Ã£o encontrados:")
         for error in errors:
             print(f"  - {error}")
     else:
-        print("Configurações validadas com sucesso!")
+        print("ConfiguraÃ§Ãµes validadas com sucesso!")
+

@@ -10,6 +10,21 @@ from typing import Tuple, List, Dict, Any
 import logging
 import joblib
 import os
+import sys
+from pathlib import Path
+
+# Adicionar path para módulo weather
+current_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(current_dir))
+
+# Import do sistema de weather
+try:
+    from weather.weather_service import WeatherService
+    from weather.weather_models import WeatherData
+    WEATHER_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Sistema de weather não disponível: {e}")
+    WEATHER_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +32,36 @@ logger = logging.getLogger(__name__)
 class FeatureEngineer:
     """Classe responsável pela criação automática de features para o modelo ML"""
     
-    def __init__(self):
+    def __init__(self, use_real_weather: bool = True, weather_cache_hours: int = 1):
+        """
+        Inicializa o Feature Engineer
+        
+        Args:
+            use_real_weather: Se deve usar dados climáticos reais da API
+            weather_cache_hours: TTL do cache climático em horas
+        """
         self.label_encoders = {}
         self.scaler = StandardScaler()
         self.feature_columns = []
         self.target_column = 'houve_sinistro'
+        
+        # Sistema de weather
+        self.use_real_weather = use_real_weather and WEATHER_AVAILABLE
+        self.weather_service = None
+        
+        if self.use_real_weather:
+            try:
+                self.weather_service = WeatherService(
+                    cache_ttl_hours=weather_cache_hours,
+                    cache_db_path="weather_cache.db"
+                )
+                logger.info("✅ WeatherService inicializado - Usando dados climáticos reais")
+            except Exception as e:
+                logger.warning(f"❌ Falha ao inicializar WeatherService: {e}")
+                self.use_real_weather = False
+        
+        if not self.use_real_weather:
+            logger.info("⚠️  Usando dados climáticos simulados (fallback)")
         
     def create_features(self, df_apolices: pd.DataFrame, 
                        df_sinistros: pd.DataFrame = None,
@@ -48,12 +88,12 @@ class FeatureEngineer:
         # 2. Features geográficas do CEP
         features_df = self._create_geographic_features(features_df)
         
-        # 3. Features climáticas se disponíveis
+        # 3. Features climáticas (reais da API ou simuladas)
         if df_clima is not None:
             features_df = self._add_climate_features(features_df, df_clima)
         else:
-            # Features climáticas simuladas para funcionar sem dados reais
-            features_df = self._create_simulated_climate_features(features_df)
+            # Usar dados climáticos reais da API se disponível, senão simular
+            features_df = self._create_climate_features(features_df)
         
         # 4. Target (sinistro ou não) baseado no histórico
         if df_sinistros is not None:
@@ -181,36 +221,264 @@ class FeatureEngineer:
         # Em produção, faria join com dados climáticos por lat/lon e data
         return self._create_simulated_climate_features(df)
     
+    def _create_climate_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Cria features climáticas usando dados reais da API ou simulados
+        
+        Args:
+            df: DataFrame com dados das apólices (deve ter latitude/longitude)
+            
+        Returns:
+            DataFrame com features climáticas adicionadas
+        """
+        if self.use_real_weather and self.weather_service:
+            return self._create_real_climate_features(df)
+        else:
+            return self._create_simulated_climate_features(df)
+    
+    def _create_real_climate_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Cria features climáticas usando dados reais da API OpenMeteo"""
+        df = df.copy()
+        logger.info(f"🌤️  Buscando dados climáticos reais para {len(df)} localizações")
+        
+        # Contador de sucessos/falhas para estatísticas
+        api_success_count = 0
+        fallback_count = 0
+        
+        # Buscar dados climáticos para cada localização
+        for idx, row in df.iterrows():
+            try:
+                # Obter coordenadas (devem estar disponíveis do _create_geographic_features)
+                latitude = row.get('latitude')
+                longitude = row.get('longitude')
+                
+                if pd.isna(latitude) or pd.isna(longitude):
+                    logger.warning(f"Coordenadas faltantes para índice {idx}, usando fallback")
+                    self._add_fallback_climate_data(df, idx, row)
+                    fallback_count += 1
+                    continue
+                
+                # Buscar dados climáticos reais
+                weather_data = self.weather_service.get_weather_for_prediction(latitude, longitude)
+                
+                if weather_data and weather_data.source != "minimal_fallback":
+                    # Usar dados reais da API
+                    self._add_real_climate_data(df, idx, weather_data)
+                    api_success_count += 1
+                else:
+                    # Fallback para dados simulados
+                    self._add_fallback_climate_data(df, idx, row)
+                    fallback_count += 1
+                    
+            except Exception as e:
+                logger.warning(f"Erro ao buscar clima para índice {idx}: {e}")
+                self._add_fallback_climate_data(df, idx, row)
+                fallback_count += 1
+        
+        # Log de estatísticas
+        total_requests = api_success_count + fallback_count
+        if total_requests > 0:
+            api_rate = (api_success_count / total_requests) * 100
+            logger.info(f"📊 Dados climáticos: {api_success_count} API ({api_rate:.1f}%), {fallback_count} fallback")
+        
+        # Criar features derivadas dos dados climáticos
+        df = self._create_derived_climate_features(df)
+        
+        return df
+    
+    def _add_real_climate_data(self, df: pd.DataFrame, idx: int, weather_data: WeatherData):
+        """Adiciona dados climáticos reais ao DataFrame"""
+        
+        # Features básicas de temperatura
+        df.loc[idx, 'temperatura_atual'] = weather_data.temperature_current or 22.0
+        df.loc[idx, 'temperatura_max'] = weather_data.temperature_max or weather_data.temperature_current or 25.0
+        df.loc[idx, 'temperatura_min'] = weather_data.temperature_min or weather_data.temperature_current or 18.0
+        df.loc[idx, 'temperatura_sensacao'] = weather_data.temperature_apparent or weather_data.temperature_current or 22.0
+        
+        # Features de precipitação
+        df.loc[idx, 'precipitacao_atual'] = weather_data.precipitation or 0.0
+        df.loc[idx, 'chuva_atual'] = weather_data.rain or 0.0
+        df.loc[idx, 'neve_atual'] = weather_data.snowfall or 0.0
+        
+        # Features atmosféricas
+        df.loc[idx, 'umidade_atual'] = weather_data.humidity or 60.0
+        df.loc[idx, 'pressao_atmosferica'] = weather_data.pressure_msl or 1013.0
+        df.loc[idx, 'cobertura_nuvens'] = weather_data.cloud_cover or 50.0
+        
+        # Features de vento
+        df.loc[idx, 'vento_velocidade'] = weather_data.wind_speed or 10.0
+        df.loc[idx, 'vento_direcao'] = weather_data.wind_direction or 180.0
+        df.loc[idx, 'vento_rajadas'] = weather_data.wind_gusts or weather_data.wind_speed or 10.0
+        
+        # Features históricas (últimos 7 dias)
+        df.loc[idx, 'temp_max_7d'] = weather_data.temperature_max_7d or weather_data.temperature_max or 25.0
+        df.loc[idx, 'temp_min_7d'] = weather_data.temperature_min_7d or weather_data.temperature_min or 18.0
+        df.loc[idx, 'precipitacao_7d'] = weather_data.precipitation_sum_7d or 0.0
+        
+        # Features categóricas
+        df.loc[idx, 'condicoes_tempo'] = weather_data.conditions.value if weather_data.conditions else 'partly_cloudy'
+        df.loc[idx, 'codigo_tempo'] = weather_data.weather_code or 1
+        
+        # Metadados
+        df.loc[idx, 'fonte_clima'] = weather_data.source
+        df.loc[idx, 'clima_cache'] = weather_data.is_cached
+    
+    def _add_fallback_climate_data(self, df: pd.DataFrame, idx: int, row: pd.Series):
+        """Adiciona dados climáticos simulados como fallback"""
+        
+        # Usar região para simular dados mais realísticos
+        regiao = row.get('regiao_brasil', 'MG')
+        latitude = row.get('latitude', -15.0)
+        
+        # Parâmetros regionais baseados na latitude
+        if latitude < -25:  # Sul
+            temp_base, chuva_base, umidade_base = 20, 120, 75
+        elif latitude < -20:  # Sudeste
+            temp_base, chuva_base, umidade_base = 24, 100, 65
+        elif latitude < -10:  # Centro-Oeste
+            temp_base, chuva_base, umidade_base = 27, 80, 60
+        else:  # Norte/Nordeste
+            temp_base, chuva_base, umidade_base = 29, 60, 70
+        
+        # Adicionar variação sazonal (simplificada)
+        import datetime
+        month = datetime.datetime.now().month
+        if month in [12, 1, 2]:  # Verão
+            temp_adj, chuva_mult = 3, 1.5
+        elif month in [6, 7, 8]:  # Inverno
+            temp_adj, chuva_mult = -3, 0.5
+        else:
+            temp_adj, chuva_mult = 0, 1.0
+        
+        # Features básicas com variação aleatória
+        np.random.seed(42 + idx)  # Seed determinística por linha
+        
+        temp_atual = temp_base + temp_adj + np.random.normal(0, 2)
+        df.loc[idx, 'temperatura_atual'] = temp_atual
+        df.loc[idx, 'temperatura_max'] = temp_atual + np.random.uniform(2, 6)
+        df.loc[idx, 'temperatura_min'] = temp_atual - np.random.uniform(2, 5)
+        df.loc[idx, 'temperatura_sensacao'] = temp_atual + np.random.uniform(-2, 3)
+        
+        precipitacao = np.random.gamma(2, chuva_base * chuva_mult / 30)  # Para escala diária
+        df.loc[idx, 'precipitacao_atual'] = precipitacao
+        df.loc[idx, 'chuva_atual'] = precipitacao
+        df.loc[idx, 'neve_atual'] = 0.0  # Raramente neve no Brasil
+        
+        df.loc[idx, 'umidade_atual'] = max(20, min(95, umidade_base + np.random.normal(0, 10)))
+        df.loc[idx, 'pressao_atmosferica'] = np.random.normal(1013, 8)
+        df.loc[idx, 'cobertura_nuvens'] = np.random.uniform(10, 90)
+        
+        vento_base = 15 if latitude < -20 else 12  # Sul tem mais vento
+        df.loc[idx, 'vento_velocidade'] = np.random.gamma(2, vento_base/2)
+        df.loc[idx, 'vento_direcao'] = np.random.uniform(0, 360)
+        df.loc[idx, 'vento_rajadas'] = df.loc[idx, 'vento_velocidade'] * np.random.uniform(1.2, 2.0)
+        
+        # Histórico simulado
+        df.loc[idx, 'temp_max_7d'] = temp_atual + np.random.uniform(3, 8)
+        df.loc[idx, 'temp_min_7d'] = temp_atual - np.random.uniform(3, 6)
+        df.loc[idx, 'precipitacao_7d'] = precipitacao * np.random.uniform(5, 15)
+        
+        # Categóricas simuladas
+        if precipitacao > 5:
+            condicoes = 'rain'
+            codigo = 61
+        elif df.loc[idx, 'cobertura_nuvens'] > 80:
+            condicoes = 'overcast'
+            codigo = 3
+        else:
+            condicoes = 'partly_cloudy'
+            codigo = 1
+            
+        df.loc[idx, 'condicoes_tempo'] = condicoes
+        df.loc[idx, 'codigo_tempo'] = codigo
+        df.loc[idx, 'fonte_clima'] = 'simulated_fallback'
+        df.loc[idx, 'clima_cache'] = False
+    
+    def _create_derived_climate_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Cria features derivadas dos dados climáticos básicos"""
+        
+        # Índices de risco climático
+        df['indice_tempestade'] = (df['precipitacao_atual'] * df['vento_velocidade']) / 100
+        df['indice_calor'] = df['temperatura_atual'] + (df['umidade_atual'] / 100) * 5
+        df['amplitude_termica'] = df['temperatura_max'] - df['temperatura_min']
+        df['amplitude_7d'] = df['temp_max_7d'] - df['temp_min_7d']
+        
+        # Features binárias de risco
+        df['temp_extrema'] = ((df['temperatura_atual'] > 35) | (df['temperatura_atual'] < 5)).astype(int)
+        df['chuva_intensa'] = (df['precipitacao_atual'] > 20).astype(int)
+        df['vento_forte'] = (df['vento_velocidade'] > 40).astype(int)
+        df['umidade_extrema'] = ((df['umidade_atual'] > 90) | (df['umidade_atual'] < 30)).astype(int)
+        df['pressao_anormal'] = ((df['pressao_atmosferica'] > 1025) | (df['pressao_atmosferica'] < 1000)).astype(int)
+        
+        # Features de tendência histórica
+        df['tendencia_temperatura'] = df['temperatura_atual'] - ((df['temp_max_7d'] + df['temp_min_7d']) / 2)
+        df['precipitacao_concentrada'] = (df['precipitacao_atual'] / df['precipitacao_7d']).fillna(0)
+        
+        # Score de risco climático geral (0-1)
+        risk_components = [
+            (df['indice_tempestade'] / 100).clip(0, 1),
+            (df['chuva_intensa']).astype(float),
+            (df['vento_forte']).astype(float),
+            (df['temp_extrema']).astype(float),
+            (df['pressao_anormal']).astype(float) * 0.5
+        ]
+        df['risco_climatico_geral'] = sum(risk_components) / len(risk_components)
+        
+        return df
+    
     def _create_simulated_climate_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Cria features climáticas simuladas para o protótipo"""
+        """Cria features climáticas simuladas compatíveis com as novas features reais"""
         df = df.copy()
         np.random.seed(42)  # Para reprodutibilidade
         
-        # Simular condições climáticas baseadas na região
+        # Mapear campos antigos para novos (compatibilidade)
         for idx, row in df.iterrows():
             regiao = row.get('regiao_brasil', 'MG')
             
             # Parâmetros por região
             if 'RJ' in regiao or 'SP' in regiao:
-                temp_base, chuva_base, vento_base = 25, 100, 15
+                temp_base, chuva_base, vento_base, umidade_base = 25, 100, 15, 65
             elif 'BA' in regiao or 'PE' in regiao:
-                temp_base, chuva_base, vento_base = 28, 60, 12
+                temp_base, chuva_base, vento_base, umidade_base = 28, 60, 12, 70
             elif 'RS' in regiao or 'SC' in regiao:
-                temp_base, chuva_base, vento_base = 20, 120, 20
+                temp_base, chuva_base, vento_base, umidade_base = 20, 120, 20, 75
             else:
-                temp_base, chuva_base, vento_base = 26, 80, 15
+                temp_base, chuva_base, vento_base, umidade_base = 26, 80, 15, 65
             
-            # Adicionar variação aleatória
-            df.loc[idx, 'temperatura_media'] = np.random.normal(temp_base, 3)
-            df.loc[idx, 'precipitacao_30d'] = np.random.gamma(2, chuva_base/2)
-            df.loc[idx, 'vento_max'] = np.random.gamma(2, vento_base/2)
-            df.loc[idx, 'umidade_media'] = np.random.normal(70, 10)
+            # Features básicas compatíveis com versão real
+            temp_atual = np.random.normal(temp_base, 3)
+            df.loc[idx, 'temperatura_atual'] = temp_atual
+            df.loc[idx, 'temperatura_max'] = temp_atual + np.random.uniform(2, 6)
+            df.loc[idx, 'temperatura_min'] = temp_atual - np.random.uniform(2, 5)
+            df.loc[idx, 'temperatura_sensacao'] = temp_atual + np.random.uniform(-2, 3)
+            
+            precipitacao = np.random.gamma(2, chuva_base/20)  # Escala para mm/dia
+            df.loc[idx, 'precipitacao_atual'] = precipitacao
+            df.loc[idx, 'chuva_atual'] = precipitacao
+            df.loc[idx, 'neve_atual'] = 0.0
+            
+            df.loc[idx, 'umidade_atual'] = np.random.normal(umidade_base, 10)
+            df.loc[idx, 'pressao_atmosferica'] = np.random.normal(1013, 8)
+            df.loc[idx, 'cobertura_nuvens'] = np.random.uniform(20, 80)
+            
+            vento = np.random.gamma(2, vento_base/2)
+            df.loc[idx, 'vento_velocidade'] = vento
+            df.loc[idx, 'vento_direcao'] = np.random.uniform(0, 360)
+            df.loc[idx, 'vento_rajadas'] = vento * np.random.uniform(1.2, 2.0)
+            
+            # Histórico simulado
+            df.loc[idx, 'temp_max_7d'] = temp_atual + np.random.uniform(3, 8)
+            df.loc[idx, 'temp_min_7d'] = temp_atual - np.random.uniform(3, 6)
+            df.loc[idx, 'precipitacao_7d'] = precipitacao * np.random.uniform(5, 15)
+            
+            # Categóricas
+            df.loc[idx, 'condicoes_tempo'] = 'rain' if precipitacao > 5 else 'partly_cloudy'
+            df.loc[idx, 'codigo_tempo'] = 61 if precipitacao > 5 else 1
+            df.loc[idx, 'fonte_clima'] = 'simulated_legacy'
+            df.loc[idx, 'clima_cache'] = False
         
-        # Features derivadas do clima
-        df['indice_tempestade'] = (df['precipitacao_30d'] * df['vento_max']) / 1000
-        df['temp_extrema'] = ((df['temperatura_media'] > 35) | (df['temperatura_media'] < 10)).astype(int)
-        df['chuva_intensa'] = (df['precipitacao_30d'] > 150).astype(int)
-        df['vento_forte'] = (df['vento_max'] > 30).astype(int)
+        # Criar features derivadas usando a mesma função
+        df = self._create_derived_climate_features(df)
         
         return df
     
@@ -274,8 +542,15 @@ class FeatureEngineer:
                 
                 self.feature_columns.append(f'{feature}_encoded')
         
-        # Remover valores nulos
-        df = df.dropna(subset=self.feature_columns + [self.target_column])
+        # Remover valores nulos apenas das colunas que existem
+        existing_features = [col for col in self.feature_columns if col in df.columns]
+        required_columns = existing_features + [self.target_column] if self.target_column in df.columns else existing_features
+        
+        if required_columns:
+            df = df.dropna(subset=required_columns)
+        
+        # Atualizar feature_columns apenas com colunas que existem
+        self.feature_columns = existing_features
         
         return df
     
@@ -289,9 +564,18 @@ class FeatureEngineer:
         X = df[self.feature_columns]
         y = df[self.target_column]
         
-        # Split train/test
+        # Split train/test - verificar se podemos estratificar
+
+        
+        stratify_param = y if len(y.unique()) > 1 else None
+
+        
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=42, stratify=y
+
+        
+            X, y, test_size=test_size, random_state=42, stratify=stratify_param
+
+        
         )
         
         # Normalizar features numéricas
@@ -331,20 +615,82 @@ class FeatureEngineer:
         logger.info(f"Preprocessors carregados de {model_dir}")
     
     def transform_new_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Transforma novos dados usando preprocessors treinados"""
-        # Aplicar mesmas transformações do treinamento
-        df = self._create_policy_features(df)
-        df = self._create_geographic_features(df)
-        df = self._create_simulated_climate_features(df)
-        df = self._clean_features(df)
+        """Transforma novos dados para predição (SEM coluna target)"""
+        logger.info("Transformando dados para predição...")
         
-        # Aplicar scaling
-        X = df[self.feature_columns]
-        X_scaled = self.scaler.transform(X)
+        # Fazer cópia para não alterar original
+        df_pred = df.copy()
         
-        return pd.DataFrame(X_scaled, columns=self.feature_columns, index=df.index)
-
-
+        # Aplicar mesmas transformações do treinamento (sem target)
+        df_pred = self._create_policy_features(df_pred)
+        df_pred = self._create_geographic_features(df_pred)
+        df_pred = self._create_climate_features(df_pred)  # Usar nova função que escolhe real ou simulado
+        
+        # Limpeza especial para predição (sem tentar acessar target)
+        df_pred = self._clean_features_for_prediction(df_pred)
+        
+        # Selecionar apenas as features do modelo
+        if hasattr(self, 'feature_columns') and self.feature_columns:
+            # Garantir que todas as features necessárias existem
+            missing_features = []
+            for col in self.feature_columns:
+                if col not in df_pred.columns:
+                    missing_features.append(col)
+                    df_pred[col] = 0  # Adicionar com valor padrão
+            
+            if missing_features:
+                logger.warning(f"Features faltantes preenchidas com 0: {missing_features}")
+            
+            # Selecionar apenas as features do modelo
+            df_pred = df_pred[self.feature_columns]
+        else:
+            # Se não tem feature_columns, usar colunas numéricas
+            numeric_cols = df_pred.select_dtypes(include=['int64', 'float64', 'int32', 'float32']).columns
+            df_pred = df_pred[numeric_cols]
+        
+        # Aplicar scaling se disponível
+        if hasattr(self, 'scaler') and self.scaler:
+            df_pred_scaled = self.scaler.transform(df_pred)
+            df_pred = pd.DataFrame(df_pred_scaled, columns=df_pred.columns, index=df_pred.index)
+        
+        logger.info(f"Dados transformados para predição: {df_pred.shape}")
+        return df_pred
+    
+    def _clean_features_for_prediction(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Limpa features para predição (sem tentar acessar target)"""
+        # Colunas a remover (identificadores e strings)
+        cols_to_remove = [
+            'numero_apolice', 'cep', 'tipo_residencia', 'data_contratacao',
+            'cep_clean', 'cep_regiao', 'cep_subregiao', 'cep_setor', 'regiao_brasil',
+            # NÃO incluir 'houve_sinistro' pois não existe em predições
+        ]
+        
+        # Remover colunas que existem
+        for col in cols_to_remove:
+            if col in df.columns:
+                df = df.drop(columns=[col])
+        
+        # Converter categóricos para numérico
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                df[col] = pd.Categorical(df[col]).codes
+            elif df[col].dtype == 'category':
+                df[col] = df[col].cat.codes
+        
+        # Converter datetime para timestamp numérico
+        for col in df.columns:
+            if df[col].dtype == 'datetime64[ns]':
+                df[col] = df[col].astype('int64') // 10**9
+        
+        # Garantir que todas as colunas são numéricas
+        for col in df.columns:
+            if df[col].dtype not in ['int64', 'float64', 'int32', 'float32']:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # Remover NaN
+        df = df.fillna(0)
+        
+        return df
 # Exemplo de uso para testes
 if __name__ == "__main__":
     # Testar com dados simulados

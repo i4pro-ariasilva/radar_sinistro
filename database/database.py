@@ -41,12 +41,20 @@ class Database:
                 sql_script = file.read()
             
             with self.get_connection() as conn:
-                # Executa o script dividindo por comandos
-                commands = sql_script.split(';')
-                for command in commands:
-                    command = command.strip()
-                    if command:
-                        conn.execute(command)
+                # Executar script SQL completo de uma vez
+                try:
+                    conn.executescript(sql_script)
+                except Exception as e:
+                    logger.warning(f"executescript falhou: {e}, tentando comando por comando...")
+                    # Se falhar, tentar comando por comando
+                    commands = sql_script.split(';')
+                    for command in commands:
+                        command = command.strip()
+                        if command and not command.startswith('--'):
+                            try:
+                                conn.execute(command + ';')
+                            except Exception as cmd_error:
+                                logger.warning(f"Comando SQL ignorado: {cmd_error}")
                 conn.commit()
             
             logger.info("Banco de dados inicializado com sucesso")

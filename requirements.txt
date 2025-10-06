@@ -1,64 +1,56 @@
-# Dependências Python para Sistema de Radar de Sinistro
+﻿# Dependências Python para Sistema de Radar de Sinistro v3.0
 # Versões específicas para garantir compatibilidade
 
-# Análise de dados e ML
+# === DEPENDÊNCIAS ESSENCIAIS ===
+
+# Análise de dados e Machine Learning
 pandas>=2.0.0
 numpy>=1.24.0
 scikit-learn>=1.3.0
 xgboost>=1.7.0
 
-# Banco de dados
-sqlite3  # Incluído no Python padrão
-
-# APIs e Web
-flask>=2.3.0
+# APIs e Web requests
 requests>=2.31.0
-flask-cors>=4.0.0
 
 # Visualização
 matplotlib>=3.7.0
 seaborn>=0.12.0
-plotly>=5.15.0
 
 # Processamento de dados
-openpyxl>=3.1.0  # Para arquivos Excel
-chardet>=5.1.0   # Detecção de encoding
-pyarrow>=12.0.0  # Para arquivos Parquet (opcional)
+chardet>=5.1.0   # Detecção de encoding de arquivos CSV
 
-# Utilitários
-python-dateutil>=2.8.0
-pytz>=2023.3
+# Persistência de modelos
+joblib>=1.3.0    # Para salvar/carregar modelos ML
 
-# Desenvolvimento e testes
-pytest>=7.4.0
-pytest-cov>=4.1.0
+# === MÓDULOS PADRÃO (incluídos no Python) ===
+# sqlite3     - Banco de dados
+# json        - Processamento JSON  
+# csv         - Leitura de arquivos CSV
+# logging     - Sistema de logs
+# os, sys     - Sistema operacional
+# pathlib     - Manipulação de caminhos
+# datetime    - Manipulação de datas
+# typing      - Type hints
+# re          - Expressões regulares
+# traceback   - Debug de erros
 
-# Geolocalização
-geopy>=2.3.0  # Para geocoding
+# === DEPENDÊNCIAS OPCIONAIS (para desenvolvimento) ===
 
-# APIs de clima (opcional, para integrações específicas)
-# openweathermap-api>=1.0.0  # Descomentarif usar OpenWeather específico
+# Testes
+# pytest>=7.4.0
+# pytest-cov>=4.1.0
 
-# Logging e monitoramento
-coloredlogs>=15.0  # Logs coloridos no terminal
+# Formatação de código  
+# black>=23.7.0
+# flake8>=6.0.0
+# isort>=5.12.0
 
-# Validação
-jsonschema>=4.19.0  # Para validação de schemas JSON
+# Interface web (se necessário)
+# flask>=2.3.0
+# flask-cors>=4.0.0
 
-# Formatação de código (desenvolvimento)
-black>=23.7.0
-flake8>=6.0.0
-isort>=5.12.0
+# Visualização avançada
+# plotly>=5.15.0
 
-# Documentação
-sphinx>=7.1.0  # Para gerar documentação automática
-
-# Segurança
-cryptography>=41.0.0  # Para criptografia de dados sensíveis
-
-# Performance
-numba>=0.57.0  # JIT compilation para código crítico (opcional)
-
-# Interface web avançada (opcional)
-# dash>=2.14.0  # Para dashboards interativos mais avançados
-# streamlit>=1.25.0  # Alternativa para interface web rápida
+# Processamento de arquivos Excel
+# openpyxl>=3.1.0

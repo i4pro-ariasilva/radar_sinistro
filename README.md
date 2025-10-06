@@ -62,15 +62,6 @@ Execute o script principal para acessar todas as funcionalidades:
 python main.py
 ````
 
-**Opções disponíveis:**
-1. **Inicializar sistema completo** - Setup de banco e configurações
-2. **Gerar dados de exemplo** - Criar dataset para demonstração
-3. **Processar dados** - Pipeline completo de limpeza
-4. **Treinar modelo ML** - Machine Learning com dados reais/simulados
-5. **Testar predições** - Verificar funcionamento do modelo
-6. **Status do Weather Service** - Verificar integração climática
-7. **Demo completo** - Execução end-to-end
-8. **Estatísticas do banco** - Informações do database
 
 ### Processamento de Dados
 
@@ -93,8 +84,8 @@ print(f"Taxa de sucesso: {report['taxa_sucesso']}%")
 ### Apólices
 - numero_apolice: Identificador único
 - cep: Localização (formato XXXXX-XXX)
-- 	ipo_residencia: casa/apartamento/sobrado
-- alor_segurado: Valor da cobertura
+- tipo_residencia: casa/apartamento/sobrado
+- valor_segurado: Valor da cobertura
 - data_contratacao: Data da contratação
 
 ### Dados Climáticos
@@ -183,4 +174,5 @@ Para dúvidas e problemas:
 ---
 
 **Sistema de Radar Climático - Prevenindo sinistros através de dados inteligentes**
+
 

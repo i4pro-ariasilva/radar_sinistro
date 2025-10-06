@@ -33,33 +33,34 @@ Este sistema integra dados de apólices de seguradoras com informações climát
 ##  Pré-requisitos
 
 - **Python 3.8+**
-- **Dependências listadas em equirements.txt**
+- **Dependências listadas em 
+equirements.txt**
 
 ##  Instalação e Setup
 
 ### 1. Clone ou baixe o projeto
-`ash
+```bash
 cd radar_sinistro
-`
+````
 
 ### 2. Instalar dependências
-`ash
+```bash
 pip install -r requirements.txt
-`
+````
 
 ### 3. Executar sistema
-`ash
+```bash
 python main.py
-`
+````
 
 ##  Como Usar
 
 ### Menu Principal
 Execute o script principal para acessar todas as funcionalidades:
 
-`ash
+```bash
 python main.py
-`
+````
 
 **Opções disponíveis:**
 1. **Inicializar sistema completo** - Setup de banco e configurações
@@ -73,7 +74,7 @@ python main.py
 
 ### Processamento de Dados
 
-`python
+```python
 from src.data_processing import PolicyDataProcessor
 
 # Inicializar processador
@@ -85,22 +86,21 @@ df = processor.load_and_process('caminho/para/apolices.csv')
 # Obter relatório de qualidade
 report = processor.get_quality_report()
 print(f"Taxa de sucesso: {report['taxa_sucesso']}%")
-`
+```
 
 ##  Estrutura de Dados
 
 ### Apólices
-- 
-umero_apolice: Identificador único
+- numero_apolice: Identificador único
 - cep: Localização (formato XXXXX-XXX)
 - 	ipo_residencia: casa/apartamento/sobrado
 - alor_segurado: Valor da cobertura
 - data_contratacao: Data da contratação
 
 ### Dados Climáticos
-- 	emperatura_c: Temperatura em Celsius
+- temperatura_c: Temperatura em Celsius
 - precipitacao_mm: Chuva em milímetros
-- ento_kmh: Velocidade do vento
+- vento_kmh: Velocidade do vento
 - umidade_percent: Umidade relativa
 
 ##  Configuração
@@ -136,7 +136,7 @@ Principais configurações do sistema já estão pré-definidas para funcionamen
 
 ##  Estrutura do Projeto
 
-`
+```
 radar_sinistro/
   data/                    # Dados do sistema
   database/                # Módulo de banco
@@ -145,7 +145,7 @@ radar_sinistro/
   logs/                    # Logs do sistema
  main.py                     # Script principal
  requirements.txt            # Dependências
-`
+```
 
 ##  Dados de Exemplo
 
@@ -160,18 +160,18 @@ O sistema inclui gerador de dados fictícios para demonstração:
 ### Problemas Comuns
 
 **Erro de importação de módulos**
-`ash
+```bash
 # Verificar se está no diretório correto
 cd radar_sinistro
 python main.py
-`
+```
 
 **Banco de dados corrompido**
-`ash
+```bash
 # Recriar banco
 rm *.db
 python main.py  # Escolher opção 1
-`
+```
 
 ##  Suporte
 
@@ -183,3 +183,4 @@ Para dúvidas e problemas:
 ---
 
 **Sistema de Radar Climático - Prevenindo sinistros através de dados inteligentes**
+

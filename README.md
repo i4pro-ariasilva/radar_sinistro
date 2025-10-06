@@ -34,7 +34,7 @@ Este sistema integra dados de apólices de seguradoras com informações climát
 
 - **Python 3.8+**
 - **Dependências listadas em 
-equirements.txt**
+requirements.txt**
 
 ##  Instalação e Setup
 
@@ -62,6 +62,31 @@ Execute o script principal para acessar todas as funcionalidades:
 python main.py
 ````
 
+
+**Opções disponíveis:**
+
+**DADOS E PROCESSAMENTO:**
+1. **Inicializar sistema completo** - Setup de banco e configurações
+2. **Gerar dados de exemplo** - Criar dataset para demonstração
+3. **Processar dados (Pipeline)** - Pipeline completo de limpeza
+
+**MACHINE LEARNING:**
+4. **Treinar modelo (Dados REAIS)** - ML com dados climáticos reais
+5. **Treinar modelo (Dados SIMULADOS)** - ML com dados simulados
+6. **Testar predições** - Verificar funcionamento do modelo
+
+**SISTEMA CLIMÁTICO:**
+7. **Status do Weather Service** - Verificar integração climática
+
+**DEMONSTRAÇÕES:**
+9. **Demo completo (Full Pipeline)** - Execução end-to-end
+10. **Status geral do sistema** - Monitoramento completo
+
+**UTILITÁRIOS:**
+11. **Estatísticas do banco** - Informações do database
+12. **Limpar cache climático** - Limpar cache de APIs
+
+0. **Sair** - Encerrar sistema
 
 ### Processamento de Dados
 

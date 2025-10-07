@@ -563,22 +563,22 @@ class FeatureEngineer:
         """
         X = df[self.feature_columns]
         y = df[self.target_column]
-        
+
         # Split train/test - verificar se podemos estratificar
-
+        # Para estratificar, cada classe precisa ter pelo menos 2 exemplos
+        value_counts = y.value_counts()
+        min_class_count = value_counts.min()
         
-        stratify_param = y if len(y.unique()) > 1 else None
-
+        # Só estratificar se todas as classes têm pelo menos 2 exemplos
+        stratify_param = y if len(y.unique()) > 1 and min_class_count >= 2 else None
         
+        if stratify_param is None:
+            logger.warning("Não é possível estratificar: classes insuficientes ou com poucos exemplos")
+            logger.info(f"Distribuição das classes: {value_counts.to_dict()}")
+
         X_train, X_test, y_train, y_test = train_test_split(
-
-        
             X, y, test_size=test_size, random_state=42, stratify=stratify_param
-
-        
-        )
-        
-        # Normalizar features numéricas
+        )        # Normalizar features numéricas
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
         

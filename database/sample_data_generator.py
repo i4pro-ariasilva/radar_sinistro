@@ -188,6 +188,12 @@ class SampleDataGenerator:
     def _random_date(self, start: datetime, end: datetime) -> datetime:
         """Gera data aleatória entre start e end"""
         delta = end - start
+        
+        # Verificar se há diferença válida entre as datas
+        if delta.days <= 0:
+            # Se não há diferença, retornar a data de início
+            return start
+        
         random_days = random.randint(0, delta.days)
         random_seconds = random.randint(0, 86400)  # Segundos em um dia
         return start + timedelta(days=random_days, seconds=random_seconds)

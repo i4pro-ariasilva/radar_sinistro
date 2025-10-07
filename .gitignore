@@ -1,9 +1,11 @@
 # Arquivos e diretórios a serem ignorados pelo Git
 
-# Banco de dados
+# Banco de dados com dados de teste/desenvolvimento
 *.db
 *.sqlite
 *.sqlite3
+radar_climatico.db
+weather_cache.db
 
 # Dados processados
 data/processed/
@@ -13,15 +15,30 @@ data/cache/
 *.json
 *.parquet
 
-# Modelos treinados
-models/
-*.pkl
-*.joblib
-*.h5
+# Modelos treinados (COMENTADO - mantendo no repo por enquanto)
+# models/
+# *.pkl
+# *.joblib
+# *.h5
 
-# Logs
+# Logs e arquivos temporários
 logs/
 *.log
+cache/
+backups/
+
+# Arquivos de teste e debug
+*_test.py
+*_debug.py
+test_*.py
+debug_*.py
+check_*.py
+fix_*.py
+update_*.py
+
+# Backups
+*_backup.*
+*.backup
 
 # Configurações sensíveis
 .env

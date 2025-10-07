@@ -34,19 +34,26 @@ class CRUDOperations:
         """
         query = """
         INSERT INTO apolices (
-            numero_apolice, cep, latitude, longitude, tipo_residencia,
-            valor_segurado, data_contratacao, ativa
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            numero_apolice, segurado, cep, latitude, longitude, tipo_residencia,
+            valor_segurado, data_contratacao, data_inicio, ativa, 
+            score_risco, nivel_risco, probabilidade_sinistro, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             apolice.numero_apolice,
+            getattr(apolice, 'segurado', 'N/A'),
             apolice.cep,
             apolice.latitude,
             apolice.longitude,
             apolice.tipo_residencia,
             apolice.valor_segurado,
             apolice.data_contratacao,
-            apolice.ativa
+            getattr(apolice, 'data_inicio', apolice.data_contratacao),
+            apolice.ativa,
+            getattr(apolice, 'score_risco', 0.0),
+            getattr(apolice, 'nivel_risco', 'baixo'),
+            getattr(apolice, 'probabilidade_sinistro', 0.0),
+            datetime.now().isoformat()
         )
         
         try:

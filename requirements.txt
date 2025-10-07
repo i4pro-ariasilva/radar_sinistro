@@ -54,3 +54,18 @@ joblib>=1.3.0    # Para salvar/carregar modelos ML
 
 # Processamento de arquivos Excel
 # openpyxl>=3.1.0
+
+# === INTERFACE WEB ===
+
+# Framework web interativo
+streamlit>=1.28.0
+
+# Visualização avançada  
+plotly>=5.15.0
+
+# Mapas interativos
+folium>=0.14.0
+streamlit-folium>=0.13.0
+
+# Componentes extras para Streamlit
+streamlit-option-menu>=0.3.6

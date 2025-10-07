@@ -37,7 +37,7 @@ class WebMLIntegration:
             self.weather_service = WeatherService()
             
             # Verificar se modelo existe
-            model_path = "models/xgboost_model.pkl"
+            model_path = "models/radar_model.pkl"
             if os.path.exists(model_path):
                 self.model_loaded = True
                 self.logger.info("✅ Modelo ML carregado com sucesso")

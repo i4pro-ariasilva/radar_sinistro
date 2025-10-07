@@ -219,5 +219,7 @@ def get_database() -> Database:
     """Retorna a instância global do banco de dados"""
     global _db_instance
     if _db_instance is None:
-        _db_instance = Database()
+        # Usar o caminho correto do banco radar_sinistro.db
+        db_path = os.path.join('database', 'radar_sinistro.db')
+        _db_instance = Database(db_path)
     return _db_instance

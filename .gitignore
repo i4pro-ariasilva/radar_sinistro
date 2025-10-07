@@ -1,5 +1,11 @@
 # Arquivos e diretórios a serem ignorados pelo Git
 
+# API em desenvolvimento (temporário - não subir ainda)
+api/
+requirements_api.txt
+run_api.py
+start_api.bat
+
 # Banco de dados com dados de teste/desenvolvimento
 *.db
 *.sqlite

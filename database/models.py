@@ -25,6 +25,7 @@ class NivelRisco(Enum):
 class Apolice:
     """Modelo para dados de apólices de seguro"""
     numero_apolice: str
+    segurado: str
     cep: str
     tipo_residencia: str
     valor_segurado: float
@@ -38,6 +39,9 @@ class Apolice:
     
     def __post_init__(self):
         # Validações básicas
+        if not self.segurado or len(self.segurado.strip()) < 3:
+            raise ValueError("Nome do segurado é obrigatório e deve ter pelo menos 3 caracteres")
+        
         if self.valor_segurado <= 0:
             raise ValueError("Valor segurado deve ser maior que zero")
         

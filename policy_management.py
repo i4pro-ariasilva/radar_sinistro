@@ -55,13 +55,13 @@ def calculate_policy_risk(policy_data):
         }
         
         # Fazer predição
-        result = predictor.predict(prediction_data)
+        result = predictor.predict_single_policy(prediction_data)
         
         return {
-            'score_risco': result['score_risco'],
-            'nivel_risco': result['nivel_risco'],
-            'probabilidade': result['probabilidade'],
-            'fatores_principais': result.get('fatores_principais', [])
+            'score_risco': result.get('risk_score', 0),
+            'nivel_risco': result.get('risk_level', 'baixo'),
+            'probabilidade': result.get('probability', 0),
+            'fatores_principais': result.get('influence_factors', [])
         }
         
     except ImportError as e:
@@ -142,6 +142,7 @@ def save_policy_to_database(policy_data, risk_data):
         # Criar objeto Apolice com estrutura correta
         apolice = Apolice(
             numero_apolice=policy_data['numero_apolice'],
+            segurado=policy_data.get('segurado', 'N/A'),
             cep=policy_data['cep'],
             tipo_residencia=policy_data['tipo_residencia'].lower(),  # Converter para minúscula
             valor_segurado=policy_data['valor_segurado'],
@@ -151,8 +152,7 @@ def save_policy_to_database(policy_data, risk_data):
             ativa=True
         )
         
-        # Adicionar campos extras para dados de risco e segurado
-        apolice.segurado = policy_data.get('segurado', 'N/A')
+        # Adicionar campos extras para dados de risco
         apolice.data_inicio = policy_data['data_inicio']
         apolice.score_risco = float(risk_data['score_risco'])
         apolice.nivel_risco = risk_data['nivel_risco']
@@ -180,6 +180,15 @@ def save_policy_simple(policy_data, risk_data):
         # Conectar ao banco
         conn = sqlite3.connect('database/radar_sinistro.db')
         cursor = conn.cursor()
+        
+        # Verificar se a apólice já existe
+        cursor.execute('SELECT id FROM apolices WHERE numero_apolice = ?', (policy_data['numero_apolice'],))
+        existing = cursor.fetchone()
+        
+        if existing:
+            conn.close()
+            st.warning(f"Apólice {policy_data['numero_apolice']} já existe no banco de dados")
+            return existing[0]  # Retorna o ID existente
         
         # Criar tabela se não existir (usar mesma estrutura da tabela principal)
         cursor.execute('''
@@ -266,9 +275,8 @@ def show_manage_policies():
 def show_individual_policy_form():
     """Formulário para inclusão individual de apólices residenciais"""
     
-    st.subheader("🏠 Nova Apólice Residencial")
+    st.subheader("Nova Apólice Residencial")
     
-    st.info("💡 **Sistema Especializado**: Este formulário é otimizado para seguros residenciais com análise de risco climático baseada em localização, tipo de residência e valor segurado.")
     
     with st.form("individual_policy_form"):
         col1, col2 = st.columns(2)
@@ -314,9 +322,7 @@ def show_individual_policy_form():
                 help="Tipo de residência a ser segurada"
             )
             
-            st.markdown("**💡 Informação:**")
-            st.info("🏠 Este sistema analisa riscos para seguros residenciais baseados em dados climáticos e características da propriedade.")
-        
+           
         # Botões do formulário
         col1, col2, col3 = st.columns([1, 1, 1])
         
@@ -402,51 +408,46 @@ def show_individual_policy_form():
 def show_batch_policy_upload():
     """Interface para upload em lote de apólices"""
     
-    st.subheader("📋 Inclusão em Lote")
+    st.subheader("Inclusão em Lote")
     
-    # Template para download
-    st.markdown("### 📄 Template para Upload - Seguros Residenciais")
+    # Upload de arquivo - PRIMEIRO
+    st.markdown("### Upload do Arquivo")
     
-    template_data = pd.DataFrame({
-        'numero_apolice': ['POL-2024-000001', 'POL-2024-000002'],
-        'segurado': ['João Silva Santos', 'Maria Oliveira Costa'],
-        'cep': ['01234-567', '89012-345'],
-        'valor_segurado': [300000.0, 450000.0],
-        'data_inicio': ['2024-10-06', '2024-10-06'],
-        'tipo_residencia': ['Casa', 'Apartamento']
-    })
-    
-    st.dataframe(template_data, use_container_width=True)
-    
-    # Botão para download do template
-    csv_template = template_data.to_csv(index=False)
-    st.download_button(
-        label="📥 Baixar Template CSV",
-        data=csv_template,
-        file_name=f"template_apolices_{datetime.now().strftime('%Y%m%d')}.csv",
-        mime="text/csv"
-    )
-    
-    st.markdown("---")
-    
-    # Upload de arquivo
-    st.markdown("### 📤 Upload do Arquivo")
-    
+    ''' 
+    st.warning("""
+    **⚠️ Problemas comuns a evitar:**
+    - Campo 'segurado' vazio ou com apenas espaços
+    - Nomes muito curtos (menos de 3 caracteres)
+    - Caracteres especiais mal formatados (problemas de encoding)
+    - CEP sem os 8 dígitos obrigatórios
+    """)
+    '''
+
     uploaded_file = st.file_uploader(
         "Escolha o arquivo CSV com as apólices",
         type=['csv'],
-        help="Arquivo deve seguir o formato do template acima"
+        help="Arquivo deve seguir o formato do template abaixo"
     )
     
     if uploaded_file is not None:
         try:
-            # Ler arquivo
-            df = pd.read_csv(uploaded_file)
+            # Ler arquivo com encoding adequado para caracteres especiais
+            try:
+                df = pd.read_csv(uploaded_file, encoding='utf-8')
+            except UnicodeDecodeError:
+                # Fallback para encoding latin-1 se UTF-8 falhar
+                uploaded_file.seek(0)  # Voltar ao início do arquivo
+                df = pd.read_csv(uploaded_file, encoding='latin-1')
+                st.warning("Arquivo lido com encoding latin-1. Recomenda-se salvar como UTF-8.")
+            except Exception:
+                # Fallback final para encoding padrão
+                uploaded_file.seek(0)  # Voltar ao início do arquivo
+                df = pd.read_csv(uploaded_file)
             
             st.success(f"✅ Arquivo carregado: {len(df)} apólices encontradas")
             
             # Mostrar preview
-            st.markdown("### 👀 Preview dos Dados")
+            st.markdown("### Preview dos Dados")
             st.dataframe(df.head(10), use_container_width=True)
             
             # Validar dados
@@ -457,12 +458,121 @@ def show_batch_policy_upload():
                 st.error(f"❌ Colunas obrigatórias faltando: {', '.join(missing_columns)}")
                 return
             
+            # Validação prévia dos dados
+            st.markdown("### 🔍 Validação dos Dados")
+            validation_results = validate_batch_data(df)
+            
+            if validation_results['errors']:
+                st.error("❌ Problemas encontrados nos dados:")
+                for error in validation_results['errors']:
+                    st.error(f"• Linha {error['row']}: {error['message']}")
+                st.info("💡 Corrija os problemas no arquivo e faça upload novamente.")
+                return
+            
+            if validation_results['warnings']:
+                st.warning("⚠️ Avisos encontrados:")
+                for warning in validation_results['warnings']:
+                    st.warning(f"• Linha {warning['row']}: {warning['message']}")
+            
+            st.success(f"✅ Validação concluída: {len(df)} apólices válidas para processamento")
+            
             # Botão para processar lote
-            if st.button("🚀 Processar Lote Completo", use_container_width=True):
+            if st.button("Processar Lote Completo", use_container_width=True):
                 process_batch_policies(df)
                 
         except Exception as e:
             st.error(f"❌ Erro ao processar arquivo: {e}")
+    
+    # Separador visual
+    st.markdown("---")
+    
+    # Template para download - SEGUNDO
+    st.markdown("### Template para Download")
+    '''
+    st.info("""
+    **Instruções para preenchimento:**
+    - **numero_apolice**: Código único da apólice (obrigatório)
+    - **segurado**: Nome completo do segurado (obrigatório, mínimo 3 caracteres)
+    - **cep**: Código postal com 8 dígitos (pode incluir hífen)
+    - **valor_segurado**: Valor em reais (obrigatório, maior que zero)
+    - **data_inicio**: Data no formato AAAA-MM-DD
+    - **tipo_residencia**: Casa, Apartamento, Sobrado ou Kitnet
+    """)
+    '''
+    template_data = pd.DataFrame({
+        'numero_apolice': ['POL-2024-000001', 'POL-2024-000002', 'POL-2024-000003'],
+        'segurado': ['João Silva Santos', 'Maria Oliveira Costa', 'Pedro Henrique Ferreira'],
+        'cep': ['01234-567', '89012345', '13579-024'],
+        'valor_segurado': [300000.0, 450000.0, 180000.0],
+        'data_inicio': ['2024-10-07', '2024-10-07', '2024-10-07'],
+        'tipo_residencia': ['Casa', 'Apartamento', 'Sobrado']
+    })
+    
+    st.dataframe(template_data, use_container_width=True)
+    
+    # Botão para download do template
+    csv_template = template_data.to_csv(index=False)
+    st.download_button(
+        label="Baixar Template CSV",
+        data=csv_template,
+        file_name=f"template_apolices_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv"
+    )
+
+def validate_batch_data(df):
+    """Valida dados do lote antes do processamento"""
+    errors = []
+    warnings = []
+    
+    for index, row in df.iterrows():
+        row_num = index + 1
+        
+        # Validar numero_apolice
+        if pd.isna(row['numero_apolice']) or str(row['numero_apolice']).strip() == '':
+            errors.append({'row': row_num, 'message': 'Número da apólice é obrigatório'})
+        
+        # Validar segurado
+        if pd.isna(row['segurado']) or str(row['segurado']).strip() == '':
+            errors.append({'row': row_num, 'message': 'Nome do segurado é obrigatório'})
+        elif len(str(row['segurado']).strip()) < 3:
+            errors.append({'row': row_num, 'message': 'Nome do segurado deve ter pelo menos 3 caracteres'})
+        
+        # Validar CEP
+        if pd.isna(row['cep']) or str(row['cep']).strip() == '':
+            errors.append({'row': row_num, 'message': 'CEP é obrigatório'})
+        else:
+            cep_clean = str(row['cep']).strip().replace('-', '')
+            if len(cep_clean) != 8 or not cep_clean.isdigit():
+                errors.append({'row': row_num, 'message': 'CEP deve ter 8 dígitos (formato: 12345-678 ou 12345678)'})
+        
+        # Validar valor_segurado
+        if pd.isna(row['valor_segurado']):
+            errors.append({'row': row_num, 'message': 'Valor segurado é obrigatório'})
+        else:
+            try:
+                valor = float(row['valor_segurado'])
+                if valor <= 0:
+                    errors.append({'row': row_num, 'message': 'Valor segurado deve ser maior que zero'})
+                elif valor < 10000:
+                    warnings.append({'row': row_num, 'message': 'Valor segurado muito baixo (menor que R$ 10.000)'})
+                elif valor > 5000000:
+                    warnings.append({'row': row_num, 'message': 'Valor segurado muito alto (maior que R$ 5.000.000)'})
+            except ValueError:
+                errors.append({'row': row_num, 'message': 'Valor segurado deve ser um número válido'})
+        
+        # Validar data_inicio
+        if pd.isna(row['data_inicio']) or str(row['data_inicio']).strip() == '':
+            errors.append({'row': row_num, 'message': 'Data de início é obrigatória'})
+        
+        # Validar tipo_residencia
+        if pd.isna(row.get('tipo_residencia')):
+            warnings.append({'row': row_num, 'message': 'Tipo de residência não informado, será usado "Casa" como padrão'})
+        else:
+            tipos_validos = ['Casa', 'Apartamento', 'Sobrado', 'Kitnet']
+            if str(row['tipo_residencia']).strip() not in tipos_validos:
+                warnings.append({'row': row_num, 'message': f'Tipo de residência "{row["tipo_residencia"]}" não é padrão. Tipos recomendados: {", ".join(tipos_validos)}'})
+    
+    return {'errors': errors, 'warnings': warnings}
 
 def process_batch_policies(df):
     """Processa lote de apólices com cálculo de risco"""
@@ -483,15 +593,35 @@ def process_batch_policies(df):
         status_text.text(f"Processando apólice {index + 1} de {total_policies}: {row['numero_apolice']}")
         
         try:
+            # Validar dados obrigatórios da linha
+            if pd.isna(row['numero_apolice']) or str(row['numero_apolice']).strip() == '':
+                raise ValueError("Número da apólice é obrigatório")
+            
+            if pd.isna(row['segurado']) or str(row['segurado']).strip() == '':
+                raise ValueError("Nome do segurado é obrigatório")
+            
+            if pd.isna(row['cep']) or str(row['cep']).strip() == '':
+                raise ValueError("CEP é obrigatório")
+            
+            if pd.isna(row['valor_segurado']) or float(row['valor_segurado']) <= 0:
+                raise ValueError("Valor segurado deve ser maior que zero")
+            
             # Preparar dados da apólice (residencial)
             policy_data = {
                 'numero_apolice': str(row['numero_apolice']).strip(),
                 'segurado': str(row['segurado']).strip(),
-                'cep': str(row['cep']).strip(),
+                'cep': str(row['cep']).strip().replace('-', ''),  # Remover hífen do CEP
                 'valor_segurado': float(row['valor_segurado']),
                 'data_inicio': str(row['data_inicio']),
-                'tipo_residencia': str(row['tipo_residencia']) if pd.notna(row.get('tipo_residencia')) else 'Casa'
+                'tipo_residencia': str(row['tipo_residencia']).strip() if pd.notna(row.get('tipo_residencia')) else 'Casa'
             }
+            
+            # Validações adicionais
+            if len(policy_data['segurado']) < 3:
+                raise ValueError("Nome do segurado deve ter pelo menos 3 caracteres")
+            
+            if len(policy_data['cep']) != 8:
+                raise ValueError("CEP deve ter 8 dígitos")
             
             # Calcular risco
             risk_data = calculate_policy_risk(policy_data)
@@ -571,8 +701,8 @@ def show_updated_ranking():
         conn.close()
         
         if df.empty:
-            st.info("📝 Nenhuma apólice encontrada no banco de dados.")
-            st.info("💡 Use a aba 'Inclusão Individual' para adicionar sua primeira apólice!")
+            st.info("Nenhuma apólice encontrada no banco de dados.")
+            st.info("Use a aba 'Inclusão Individual' para adicionar sua primeira apólice!")
             return
         
         # Métricas resumo
@@ -634,19 +764,19 @@ def show_updated_ranking():
         
         if not filtered_df.empty:
             # Adicionar emojis de risco
-            filtered_df['🎯 Risco'] = filtered_df['score_risco'].apply(
+            filtered_df['risco'] = filtered_df['score_risco'].apply(
                 lambda x: f"{get_risk_level_emoji(x)} {x:.1f}"
             )
             
             # Formatar valores
-            filtered_df['💰 Valor'] = filtered_df['valor_segurado'].apply(
+            filtered_df['valor'] = filtered_df['valor_segurado'].apply(
                 lambda x: f"R$ {x:,.2f}"
             )
             
             # Selecionar colunas para exibição (residencial)
             display_df = filtered_df[[
                 'numero_apolice', 'segurado', 'tipo_residencia',
-                '💰 Valor', '🎯 Risco', 'nivel_risco', 'cep'
+                'valor', 'risco', 'nivel_risco', 'cep'
             ]].copy()
             
             display_df.columns = [

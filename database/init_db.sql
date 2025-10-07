@@ -5,6 +5,7 @@
 CREATE TABLE IF NOT EXISTS apolices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     numero_apolice VARCHAR(50) UNIQUE NOT NULL,
+    segurado VARCHAR(100) NOT NULL,
     cep VARCHAR(9) NOT NULL,
     latitude REAL,
     longitude REAL,

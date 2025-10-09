@@ -62,6 +62,9 @@ try:
     # Módulo Weather
     from src.weather.weather_service import WeatherService
     
+    # Módulo Mapa de Calor
+    from mapa_de_calor_completo import MapaCalorRiscos, OSMGeocoder
+    
     IMPORTS_OK = True
     logger.info("SUCESSO - Todos os módulos importados com sucesso")
     
@@ -79,6 +82,7 @@ class RadarSinistroSystem:
         self.feature_engineer = None
         self.model_trainer = None
         self.model_predictor = None
+        self.mapa_calor = None  # Novo componente
         self.initialized = False
         
     def initialize_system(self) -> bool:
@@ -140,6 +144,16 @@ class RadarSinistroSystem:
                 self.logger.info("INFO - Banco vazio - será necessário gerar dados")
             else:
                 self.logger.info(f"INFO - Banco com {stats['tables'].get('apolices', 0)} apólices")
+            
+            # 7. Inicializar Mapa de Calor
+            self.logger.info("Inicializando sistema de mapa de calor...")
+            try:
+                geocoder = OSMGeocoder(cache_dir=str(ROOT_DIR / "cache"))
+                self.mapa_calor = MapaCalorRiscos(geocoder)
+                self.logger.info("✓ Mapa de calor inicializado com sucesso")
+            except Exception as e:
+                self.logger.warning(f"⚠ Mapa de calor não disponível: {e}")
+                self.mapa_calor = None
             
             self.initialized = True
             self.logger.info("SUCESSO - Sistema inicializado com sucesso!")
@@ -503,6 +517,200 @@ class RadarSinistroSystem:
         except Exception as e:
             self.logger.error(f"ERRO na demonstração: {e}")
             return False
+    
+    def generate_risk_heatmap(self, output_format: str = "html") -> bool:
+        """Gera mapa de calor dos riscos por CEP"""
+        self.logger.info("GERANDO MAPA DE CALOR DE RISCOS")
+        self.logger.info("="*50)
+        
+        if not self.mapa_calor:
+            self.logger.error("❌ Sistema de mapa de calor não inicializado")
+            return False
+        
+        try:
+            # 1. Buscar dados das apólices com predições
+            self.logger.info("Carregando dados das apólices...")
+            
+            # Query para buscar apólices com CEPs válidos
+            query = """
+            SELECT 
+                numero_apolice,
+                cep,
+                valor_segurado as insured_value,
+                tipo_residencia,
+                data_contratacao
+            FROM apolices 
+            WHERE cep IS NOT NULL 
+            AND cep != '' 
+            AND LENGTH(REPLACE(cep, '-', '')) = 8
+            ORDER BY data_contratacao DESC
+            """
+            
+            policies_data = self.db.execute_query(query)
+            
+            if not policies_data:
+                self.logger.warning("⚠ Nenhuma apólice com CEP válido encontrada")
+                return False
+            
+            self.logger.info(f"✓ {len(policies_data)} apólices carregadas")
+            
+            # 2. Gerar predições de risco para cada apólice
+            self.logger.info("Calculando scores de risco...")
+            
+            if not self.model_predictor:
+                self.logger.error("❌ Modelo preditor não inicializado")
+                return False
+            
+            enriched_data = []
+            success_count = 0
+            
+            for policy in policies_data:
+                try:
+                    # Preparar dados para predição
+                    policy_input = {
+                        'numero_apolice': policy[0],
+                        'cep': policy[1],
+                        'valor_segurado': policy[2],
+                        'tipo_residencia': policy[3],
+                        'data_contratacao': policy[4]
+                    }
+                    
+                    # Fazer predição
+                    prediction = self.model_predictor.predict_single_policy(policy_input)
+                    
+                    if prediction:
+                        enriched_data.append({
+                            'cep': policy[1],
+                            'risk_score': prediction['risk_score'] * 100,  # Converter para 0-100
+                            'insured_value': policy[2],
+                            'policy_id': policy[0]
+                        })
+                        success_count += 1
+                        
+                except Exception as e:
+                    self.logger.debug(f"Erro ao processar apólice {policy[0]}: {e}")
+                    continue
+            
+            if not enriched_data:
+                self.logger.error("❌ Nenhuma predição de risco foi gerada")
+                return False
+            
+            self.logger.info(f"✓ {success_count} predições geradas com sucesso")
+            
+            # 3. Converter para DataFrame
+            import pandas as pd
+            policies_df = pd.DataFrame(enriched_data)
+            
+            # 4. Gerar mapa de calor
+            self.logger.info("Gerando visualização do mapa...")
+            
+            if output_format == "html":
+                # Gerar HTML do mapa
+                map_html = self.mapa_calor.criar_mapa_calor(policies_df)
+                
+                # Salvar arquivo HTML
+                output_dir = ROOT_DIR / "outputs"
+                output_dir.mkdir(exist_ok=True)
+                
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                html_file = output_dir / f"mapa_calor_riscos_{timestamp}.html"
+                
+                with open(html_file, 'w', encoding='utf-8') as f:
+                    f.write(f"""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Mapa de Calor - Radar de Sinistro</title>
+                        <meta charset="utf-8">
+                        <style>
+                            body {{ margin: 0; padding: 20px; font-family: Arial, sans-serif; }}
+                            .header {{ text-align: center; margin-bottom: 20px; }}
+                            .stats {{ background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+                        </style>
+                    </head>
+                    <body>
+                        <div class="header">
+                            <h1>🗺️ Mapa de Calor - Distribuição de Riscos</h1>
+                            <p>Radar de Sinistro v3.0 - Gerado em {datetime.now().strftime('%d/%m/%Y às %H:%M')}</p>
+                        </div>
+                        
+                        <div class="stats">
+                            <strong>📊 Estatísticas:</strong>
+                            • {len(policies_df)} apólices analisadas
+                            • {policies_df['cep'].nunique()} CEPs únicos
+                            • Risco médio: {policies_df['risk_score'].mean():.1f}
+                            • Valor total segurado: R$ {policies_df['insured_value'].sum():,.0f}
+                        </div>
+                        
+                        {map_html}
+                    </body>
+                    </html>
+                    """)
+                
+                self.logger.info(f"✅ Mapa salvo em: {html_file}")
+                
+                # Tentar abrir no navegador (Windows)
+                try:
+                    import webbrowser
+                    webbrowser.open(f"file:///{html_file}")
+                    self.logger.info("🌐 Mapa aberto no navegador")
+                except:
+                    self.logger.info("💡 Abra o arquivo HTML manualmente no navegador")
+                    
+            else:
+                # Exibir estatísticas no console
+                self._show_heatmap_stats(policies_df)
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Erro ao gerar mapa de calor: {e}")
+            return False
+    
+    def _show_heatmap_stats(self, policies_df) -> None:
+        """Exibe estatísticas do mapa de calor no console"""
+        import pandas as pd
+        
+        self.logger.info("\n📊 ESTATÍSTICAS DO MAPA DE CALOR")
+        self.logger.info("-" * 40)
+        
+        # Estatísticas gerais
+        total_policies = len(policies_df)
+        unique_ceps = policies_df['cep'].nunique()
+        avg_risk = policies_df['risk_score'].mean()
+        total_value = policies_df['insured_value'].sum()
+        
+        self.logger.info(f"📋 Total de apólices: {total_policies:,}")
+        self.logger.info(f"📍 CEPs únicos: {unique_ceps:,}")
+        self.logger.info(f"🎯 Risco médio: {avg_risk:.1f}")
+        self.logger.info(f"💰 Valor total: R$ {total_value:,.0f}")
+        
+        # Distribuição por nível de risco
+        risk_distribution = {
+            'Muito Baixo (0-25)': len(policies_df[policies_df['risk_score'] < 25]),
+            'Baixo (25-50)': len(policies_df[(policies_df['risk_score'] >= 25) & (policies_df['risk_score'] < 50)]),
+            'Médio (50-75)': len(policies_df[(policies_df['risk_score'] >= 50) & (policies_df['risk_score'] < 75)]),
+            'Alto (75-100)': len(policies_df[policies_df['risk_score'] >= 75])
+        }
+        
+        self.logger.info("\n🎯 DISTRIBUIÇÃO POR NÍVEL DE RISCO:")
+        for level, count in risk_distribution.items():
+            percentage = (count / total_policies) * 100
+            self.logger.info(f"  {level}: {count} apólices ({percentage:.1f}%)")
+        
+        # Top 5 CEPs com maior risco
+        cep_stats = policies_df.groupby('cep').agg({
+            'risk_score': 'mean',
+            'insured_value': 'sum',
+            'policy_id': 'count'
+        }).round(2)
+        cep_stats.columns = ['risk_medio', 'valor_total', 'num_apolices']
+        
+        top_risk_ceps = cep_stats.nlargest(5, 'risk_medio')
+        
+        self.logger.info(f"\n🔴 TOP 5 CEPs COM MAIOR RISCO:")
+        for cep, data in top_risk_ceps.iterrows():
+            self.logger.info(f"  {cep}: Risco {data['risk_medio']:.1f} - {data['num_apolices']} apólices")
 
 def show_enhanced_menu():
     """Menu principal atualizado"""
@@ -520,17 +728,21 @@ def show_enhanced_menu():
     print("  5. Treinar modelo (Dados SIMULADOS)")
     print("  6. Testar predições")
     print("")
+    print("VISUALIZAÇÃO:")
+    print("  7. Gerar Mapa de Calor (HTML)")
+    print("  8. Estatísticas de Risco por CEP")
+    print("")
     print("SISTEMA CLIMÁTICO:")
-    print("  7. Status do Weather Service")
-    print("  8. Teste de conectividade da API")
+    print("  9. Status do Weather Service")
+    print(" 10. Teste de conectividade da API")
     print("")
     print("DEMONSTRAÇÕES:")
-    print("  9. Demo completo (Full Pipeline)")
-    print(" 10. Status geral do sistema")
+    print(" 11. Demo completo (Full Pipeline)")
+    print(" 12. Status geral do sistema")
     print("")
     print("UTILITÁRIOS:")
-    print(" 11. Estatísticas do banco")
-    print(" 12. Limpar cache climático")
+    print(" 13. Estatísticas do banco")
+    print(" 14. Limpar cache climático")
     print("")
     print("  0. Sair")
     print("="*60)
@@ -550,118 +762,99 @@ def main():
         show_enhanced_menu()
         
         try:
-            choice = input("\nEscolha uma opção: ").strip()
+            choice = input("\n📋 Escolha uma opção: ").strip()
             
-            if choice == '0':
-                logger.info("Encerrando sistema...")
+            if choice == "0":
+                print("\n👋 Encerrando sistema. Até logo!")
                 break
-            
-            elif choice == '1':
+                
+            elif choice == "1":
+                print("\n🚀 Inicializando sistema...")
                 radar_system.initialize_system()
-            
-            elif choice == '2':
+                
+            elif choice == "2":
+                print("\n📊 Gerando dados de exemplo...")
                 radar_system.generate_sample_data()
-            
-            elif choice == '3':
+                
+            elif choice == "3":
+                print("\n⚙️ Processando dados...")
                 radar_system.process_data_pipeline()
-            
-            elif choice == '4':
+                
+            elif choice == "4":
+                print("\n🤖 Treinando modelo com dados reais...")
                 radar_system.train_ml_model(use_real_weather=True)
-            
-            elif choice == '5':
+                
+            elif choice == "5":
+                print("\n🤖 Treinando modelo com dados simulados...")
                 radar_system.train_ml_model(use_real_weather=False)
-            
-            elif choice == '6':
+                
+            elif choice == "6":
+                print("\n🎯 Testando predições...")
                 radar_system.test_predictions()
-            
-            elif choice == '7':
-                if not radar_system.weather_service:
-                    print("Inicializando Weather Service...")
-                    radar_system.weather_service = WeatherService(
-                        cache_ttl_hours=1,
-                        cache_db_path="weather_cache.db"
-                    )
                 
-                try:
-                    health = radar_system.weather_service.health_check()
-                    stats = radar_system.weather_service.get_service_stats()
-                    
-                    print("\nSTATUS DO WEATHER SERVICE:")
-                    print("="*50)
-                    print(f"   • API Status: {health['api_status']}")
-                    print(f"   • API Response Time: {health.get('response_time_ms', 'N/A')} ms")
-                    print(f"   • Cache Hit Rate: {stats['cache_hit_rate_percent']}%")
-                    print(f"   • Total Requests: {stats['total_requests']}")
-                    
-                    # Detalhes das requisições
-                    requests_info = stats.get('requests', {})
-                    print(f"   • Cache Hits: {requests_info.get('cache_hits', 0)}")
-                    print(f"   • API Calls: {requests_info.get('api_calls', 0)}")
-                    print(f"   • Fallbacks: {requests_info.get('fallbacks', 0)}")
-                    print(f"   • Errors: {requests_info.get('errors', 0)}")
-                    print(f"   • Error Rate: {stats['error_rate_percent']}%")
-                    
-                    # Detalhes do cache
-                    cache_info = stats.get('cache_stats', {})
-                    if cache_info:
-                        print(f"   • Cache Entries: {cache_info.get('total_entries', 'N/A')}")
-                        print(f"   • Cache Size: {cache_info.get('database_size_mb', 'N/A')} MB")
-                        print(f"   • Cache TTL: {cache_info.get('ttl_hours', 'N/A')} horas")
-                        print(f"   • Valid Entries: {cache_info.get('valid_entries', 'N/A')}")
-                        print(f"   • Expired Entries: {cache_info.get('expired_entries', 'N/A')}")
-                    
-                    print("="*50)
-                    
-                except Exception as e:
-                    print(f"ERRO ao obter status do Weather Service: {e}")
-                    logger.error(f"Erro ao obter status do Weather Service: {e}")
-            
-            elif choice == '8':
-                if not radar_system.weather_service:
-                    radar_system.weather_service = WeatherService()
+            elif choice == "7":
+                print("\n🗺️ Gerando mapa de calor...")
+                radar_system.generate_risk_heatmap(output_format="html")
                 
-                print("Testando conectividade da OpenMeteo API...")
-                health = radar_system.weather_service.health_check()
+            elif choice == "8":
+                print("\n📊 Estatísticas de risco por CEP...")
+                radar_system.generate_risk_heatmap(output_format="stats")
                 
-                if health['api_status'] == 'healthy':
-                    print("SUCESSO - API OpenMeteo funcionando perfeitamente!")
-                else:
-                    print("ERRO - API OpenMeteo indisponível - usando fallback")
-            
-            elif choice == '9':
-                radar_system.run_full_demo()
-            
-            elif choice == '10':
-                radar_system.show_system_status()
-            
-            elif choice == '11':
-                try:
-                    if not radar_system.db:
-                        radar_system.db = get_database()
-                    
-                    stats = radar_system.db.get_database_stats()
-                    print("\nESTATÍSTICAS DO BANCO:")
-                    print(f"   • Tamanho: {stats['file_size_mb']:.1f} MB")
-                    for table, count in stats['tables'].items():
-                        print(f"   • {table}: {count} registros")
-                except Exception as e:
-                    logger.error(f"Erro ao obter estatísticas: {e}")
-            
-            elif choice == '12':
+            elif choice == "9":
+                print("\n🌤️ Verificando Weather Service...")
                 if radar_system.weather_service:
-                    radar_system.weather_service.clear_cache(confirm=True)
-                    print("SUCESSO - Cache climático limpo")
+                    health = radar_system.weather_service.health_check()
+                    print(f"Status da API: {health['api_status']}")
                 else:
-                    print("ERRO - Weather Service não disponível")
-            
+                    print("Weather Service não inicializado")
+                    
+            elif choice == "10":
+                print("\n🔗 Testando conectividade...")
+                if radar_system.weather_service:
+                    # Teste básico
+                    test_result = radar_system.weather_service.get_current_weather(-23.5505, -46.6333)
+                    if test_result:
+                        print("✅ API funcionando corretamente")
+                    else:
+                        print("❌ Falha na conectividade")
+                else:
+                    print("Weather Service não inicializado")
+                    
+            elif choice == "11":
+                print("\n🎭 Executando demo completo...")
+                radar_system.run_full_demo()
+                
+            elif choice == "12":
+                print("\n📊 Status do sistema...")
+                radar_system.show_system_status()
+                
+            elif choice == "13":
+                print("\n📈 Estatísticas do banco...")
+                if radar_system.db:
+                    stats = radar_system.db.get_database_stats()
+                    for table, count in stats['tables'].items():
+                        print(f"  {table}: {count} registros")
+                else:
+                    print("Banco não inicializado")
+                    
+            elif choice == "14":
+                print("\n🧹 Limpando cache climático...")
+                cache_dir = ROOT_DIR / "cache"
+                if cache_dir.exists():
+                    import shutil
+                    shutil.rmtree(cache_dir)
+                    print("✅ Cache limpo")
+                else:
+                    print("Cache não encontrado")
+                    
             else:
-                print("ERRO - Opção inválida. Tente novamente.")
+                print("❌ Opção inválida! Tente novamente.")
         
         except KeyboardInterrupt:
-            logger.info("\nEncerrando sistema...")
+            print("\n\n👋 Interrompido pelo usuário. Até logo!")
             break
         except Exception as e:
-            logger.error(f"ERRO inesperado: {e}")
+            print(f"❌ Erro: {e}")
         
         input("\nPressione Enter para continuar...")
 

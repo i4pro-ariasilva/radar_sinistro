@@ -18,6 +18,7 @@ import os
 # Configurar path para módulos do sistema
 sys.path.append('.')
 from policy_management import show_manage_policies
+from mapa_de_calor_completo import criar_interface_streamlit  # NOVA IMPORTAÇÃO
 
 # Configuração da página
 st.set_page_config(
@@ -164,6 +165,7 @@ def main():
                 "🏠 Dashboard Principal",
                 "🔮 Análise de Risco",
                 "📋 Apólices em Risco",
+                "🗺️ Mapa de Calor",  # NOVA OPÇÃO ADICIONADA
                 "➕ Gerenciar Apólices",
                 "📊 Estatísticas",
                 "🌡️ Monitoramento Climático",
@@ -194,6 +196,8 @@ def main():
         show_risk_analysis()
     elif page == "📋 Apólices em Risco":
         show_policies_at_risk()
+    elif page == "🗺️ Mapa de Calor":  # NOVA ROTA ADICIONADA
+        show_mapa_calor()
     elif page == "➕ Gerenciar Apólices":
         show_manage_policies()
     elif page == "📊 Estatísticas":
@@ -1619,6 +1623,108 @@ def show_settings():
     with col3:
         st.metric("Banco de Dados", "SQLite")
         st.metric("Ambiente", "Desenvolvimento")
+
+def show_mapa_calor():
+    """Página do Mapa de Calor - NOVA FUNÇÃO"""
+    st.header("🗺️ Mapa de Calor - Distribuição de Riscos por CEP")
+    st.markdown("Visualização geográfica interativa dos riscos de sinistros baseada nos CEPs das apólices cadastradas.")
+    
+    # Verificar se há dados de apólices no banco
+    try:
+        # Buscar dados reais do banco
+        policies_data = get_real_policies_data()
+        
+        if not policies_data:
+            st.warning("⚠️ Nenhuma apólice encontrada no banco de dados.")
+            st.info("💡 Adicione apólices através de 'Gerenciar Apólices' para ver o mapa!")
+            
+            # Botão para ir para gerenciar apólices
+            if st.button("➕ Ir para Gerenciar Apólices", use_container_width=True):
+                st.session_state.page_redirect = "➕ Gerenciar Apólices"
+                st.rerun()
+            
+            # Oferecer dados de exemplo
+            st.markdown("---")
+            st.subheader("📊 Ou visualize com dados de exemplo:")
+            
+            if st.button("🎭 Gerar Mapa com Dados de Exemplo", use_container_width=True):
+                with st.spinner("Gerando mapa com dados simulados..."):
+                    # Usar a função do mapa de calor com dados None (vai gerar dados de exemplo)
+                    criar_interface_streamlit(None)
+            return
+        
+        # Converter dados do banco para DataFrame
+        import pandas as pd
+        
+        # Preparar dados para o mapa
+        mapa_data = []
+        for policy in policies_data:
+            mapa_data.append({
+                'cep': policy['cep'],
+                'risk_score': policy['risk_score'],
+                'insured_value': policy['insured_value'],
+                'policy_id': policy['policy_number']
+            })
+        
+        # Criar DataFrame
+        policies_df = pd.DataFrame(mapa_data)
+        
+        # Métricas resumidas antes do mapa
+        col1, col2, col3, col4 = st.columns(4)
+        
+        total_policies = len(policies_df)
+        unique_ceps = policies_df['cep'].nunique()
+        avg_risk = policies_df['risk_score'].mean()
+        total_value = policies_df['insured_value'].sum()
+        
+        with col1:
+            st.metric("📋 Total de Apólices", f"{total_policies:,}")
+        
+        with col2:
+            st.metric("📍 CEPs Únicos", f"{unique_ceps:,}")
+        
+        with col3:
+            st.metric("🎯 Risco Médio", f"{avg_risk:.1f}")
+        
+        with col4:
+            st.metric("💰 Valor Total", f"R$ {total_value/1000000:.1f}M")
+        
+        # Distribuição por nível de risco
+        st.markdown("---")
+        st.subheader("📊 Distribuição por Nível de Risco")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        muito_baixo = len(policies_df[policies_df['risk_score'] < 25])
+        baixo = len(policies_df[(policies_df['risk_score'] >= 25) & (policies_df['risk_score'] < 50)])
+        medio = len(policies_df[(policies_df['risk_score'] >= 50) & (policies_df['risk_score'] < 75)])
+        alto = len(policies_df[policies_df['risk_score'] >= 75])
+        
+        with col1:
+            st.metric("🟢 Muito Baixo", muito_baixo, f"{muito_baixo/total_policies*100:.1f}%")
+        
+        with col2:
+            st.metric("🔵 Baixo", baixo, f"{baixo/total_policies*100:.1f}%")
+        
+        with col3:
+            st.metric("🟡 Médio", medio, f"{medio/total_policies*100:.1f}%")
+        
+        with col4:
+            st.metric("🔴 Alto", alto, f"{alto/total_policies*100:.1f}%")
+        
+        # Chamar a interface do mapa de calor com dados reais
+        st.markdown("---")
+        st.success(f"✅ Exibindo mapa com {total_policies} apólices REAIS do banco de dados!")
+        
+        # Usar a função completa do mapa de calor
+        criar_interface_streamlit(policies_df)
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados: {e}")
+        st.warning("🔄 Usando dados de exemplo...")
+        
+        # Fallback para dados de exemplo
+        criar_interface_streamlit(None)
 
 if __name__ == "__main__":
     main()

@@ -17,13 +17,18 @@ logger = logging.getLogger(__name__)
 class Database:
     """Classe principal para gerenciamento do banco de dados"""
     
-    def __init__(self, db_path: str = 'radar_climatico.db'):
+    def __init__(self, db_path: str = None):
         """
         Inicializa a conexão com o banco de dados
         
         Args:
             db_path: Caminho para o arquivo do banco SQLite
         """
+        if db_path is None:
+            # Usar configuração padrão
+            from config.settings import DATABASE_CONFIG
+            db_path = DATABASE_CONFIG['default_db_path']
+        
         self.db_path = db_path
         self.init_database()
     
@@ -41,13 +46,72 @@ class Database:
                 sql_script = file.read()
             
             with self.get_connection() as conn:
-                # Executa o script dividindo por comandos
-                commands = sql_script.split(';')
-                for command in commands:
-                    command = command.strip()
-                    if command:
+                # Executar o script usando executescript que é mais robusto
+                conn.executescript(sql_script)
+                logger.info("Banco de dados inicializado com sucesso")
+                
+        except sqlite3.Error as e:
+            logger.error(f"Erro na inicialização do banco: {e}")
+            # Tentar inicialização alternativa comando por comando
+            self._init_database_fallback()
+        except Exception as e:
+            logger.error(f"Erro geral na inicialização: {e}")
+            self._init_database_fallback()
+    
+    def _init_database_fallback(self):
+        """Método alternativo de inicialização executando comando por comando"""
+        try:
+            logger.info("Tentando inicialização alternativa do banco...")
+            
+            # Comandos SQL básicos essenciais
+            essential_commands = [
+                """CREATE TABLE IF NOT EXISTS apolices (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    numero_apolice VARCHAR(50) UNIQUE NOT NULL,
+                    cep VARCHAR(9) NOT NULL,
+                    latitude REAL,
+                    longitude REAL,
+                    tipo_residencia VARCHAR(20) NOT NULL,
+                    valor_segurado DECIMAL(12,2) NOT NULL,
+                    data_contratacao DATE NOT NULL,
+                    ativa BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )""",
+                
+                """CREATE TABLE IF NOT EXISTS sinistros_historicos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    apolice_id INTEGER,
+                    numero_apolice VARCHAR(50),
+                    data_sinistro DATETIME NOT NULL,
+                    tipo_sinistro VARCHAR(50) NOT NULL,
+                    valor_prejuizo DECIMAL(12,2) DEFAULT 0,
+                    causa VARCHAR(100),
+                    condicoes_climaticas TEXT,
+                    precipitacao_mm REAL,
+                    vento_kmh REAL,
+                    temperatura_c REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )""",
+                
+                """CREATE INDEX IF NOT EXISTS idx_apolices_cep ON apolices(cep)""",
+                """CREATE INDEX IF NOT EXISTS idx_apolices_ativa ON apolices(ativa)""",
+                """CREATE INDEX IF NOT EXISTS idx_sinistros_data ON sinistros_historicos(data_sinistro)"""
+            ]
+            
+            with self.get_connection() as conn:
+                for command in essential_commands:
+                    try:
                         conn.execute(command)
+                    except sqlite3.Error as e:
+                        logger.warning(f"Erro ao executar comando SQL: {e}")
+                        continue
+                
                 conn.commit()
+                logger.info("Inicialização alternativa concluída")
+                
+        except Exception as e:
+            logger.error(f"Erro na inicialização alternativa: {e}")
             
             logger.info("Banco de dados inicializado com sucesso")
             

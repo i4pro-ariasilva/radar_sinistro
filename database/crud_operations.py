@@ -330,3 +330,190 @@ class CRUDOperations:
             ))
         
         return stats
+    
+    # ==================== MÉTODOS DE CONVENIÊNCIA ====================
+    
+    def create_apolice(self, numero_apolice: str, cep: str, tipo_residencia: str,
+                      valor_segurado: float, data_contratacao: str,
+                      latitude: float = None, longitude: float = None, ativa: bool = True) -> int:
+        """
+        Método de conveniência para criar apólice com parâmetros simples
+        
+        Args:
+            numero_apolice: Número da apólice
+            cep: CEP da residência
+            tipo_residencia: Tipo (casa, apartamento, sobrado)
+            valor_segurado: Valor segurado
+            data_contratacao: Data de contratação (string ISO)
+            latitude: Latitude (opcional)
+            longitude: Longitude (opcional)
+            
+        Returns:
+            ID da apólice criada
+        """
+        from .models import Apolice
+        
+        apolice = Apolice(
+            numero_apolice=numero_apolice,
+            cep=cep,
+            latitude=latitude,
+            longitude=longitude,
+            tipo_residencia=tipo_residencia,
+            valor_segurado=valor_segurado,
+            data_contratacao=data_contratacao,
+            ativa=ativa
+        )
+        
+        return self.insert_apolice(apolice)
+    
+    def create_sinistro(self, numero_apolice: str, data_sinistro: str,
+                       tipo_sinistro: str, valor_prejuizo: float,
+                       causa: str = None, condicoes_climaticas: str = None,
+                       latitude: float = None, longitude: float = None,
+                       precipitacao_mm: float = None, vento_kmh: float = None,
+                       temperatura_c: float = None) -> int:
+        """
+        Método de conveniência para criar sinistro com parâmetros simples
+        
+        Args:
+            numero_apolice: Número da apólice relacionada
+            data_sinistro: Data do sinistro (string ISO)
+            tipo_sinistro: Tipo do sinistro
+            valor_prejuizo: Valor do prejuízo
+            causa: Causa do sinistro (opcional)
+            condicoes_climaticas: Condições climáticas (opcional)
+            
+        Returns:
+            ID do sinistro criado
+        """
+        # Buscar apolice_id pelo numero_apolice
+        apolice = self.get_apolice_by_numero(numero_apolice)
+        if not apolice:
+            raise ValueError(f"Apólice {numero_apolice} não encontrada")
+        
+        # Inserir sinistro usando apolice_id
+        query = """
+        INSERT INTO sinistros_historicos (
+            apolice_id, data_sinistro, tipo_sinistro, valor_prejuizo,
+            causa, condicoes_climaticas, latitude, longitude,
+            precipitacao_mm, vento_kmh, temperatura_c
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            apolice.id,
+            data_sinistro,
+            tipo_sinistro,
+            valor_prejuizo,
+            causa,
+            condicoes_climaticas,
+            latitude,
+            longitude,
+            precipitacao_mm,
+            vento_kmh,
+            temperatura_c
+        )
+        
+        try:
+            sinistro_id = self.db.execute_command(query, params)
+            logger.info(f"Sinistro criado com ID {sinistro_id}")
+            return sinistro_id
+        except Exception as e:
+            logger.error(f"Erro ao criar sinistro: {e}")
+            raise
+    
+    def get_all_apolices(self) -> List[Apolice]:
+        """
+        Retorna todas as apólices do banco
+        
+        Returns:
+            Lista de objetos Apolice
+        """
+        query = "SELECT * FROM apolices ORDER BY created_at DESC"
+        results = self.db.execute_query(query)
+        
+        apolices = []
+        for row in results:
+            apolices.append(Apolice(
+                id=row['id'],
+                numero_apolice=row['numero_apolice'],
+                cep=row['cep'],
+                latitude=row['latitude'],
+                longitude=row['longitude'],
+                tipo_residencia=row['tipo_residencia'],
+                valor_segurado=row['valor_segurado'],
+                data_contratacao=datetime.fromisoformat(row['data_contratacao']),
+                ativa=bool(row['ativa']),
+                created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+            ))
+        
+        return apolices
+    
+    def get_all_sinistros(self) -> List[SinistroHistorico]:
+        """
+        Retorna todos os sinistros do banco
+        
+        Returns:
+            Lista de objetos SinistroHistorico
+        """
+        query = "SELECT * FROM sinistros_historicos ORDER BY data_sinistro DESC"
+        results = self.db.execute_query(query)
+        
+        sinistros = []
+        for row in results:
+            sinistros.append(SinistroHistorico(
+                id=row['id'],
+                apolice_id=row['apolice_id'],
+                data_sinistro=datetime.fromisoformat(row['data_sinistro']),
+                tipo_sinistro=row['tipo_sinistro'],
+                valor_prejuizo=row['valor_prejuizo'],
+                causa=row['causa'],
+                condicoes_climaticas=row['condicoes_climaticas'],
+                precipitacao_mm=row['precipitacao_mm'],
+                vento_kmh=row['vento_kmh'],
+                temperatura_c=row['temperatura_c'],
+                created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
+            ))
+        
+        return sinistros
+
+    def get_sinistros_com_coordenadas(self) -> List:
+        """
+        Retorna todos os sinistros com as coordenadas das apólices
+        
+        Returns:
+            Lista de objetos SinistroComCoordenadas
+        """
+        from .models import SinistroComCoordenadas
+        
+        query = """
+        SELECT s.*, a.latitude, a.longitude, a.numero_apolice
+        FROM sinistros_historicos s
+        JOIN apolices a ON s.apolice_id = a.id
+        WHERE a.latitude IS NOT NULL AND a.longitude IS NOT NULL
+        ORDER BY s.data_sinistro DESC
+        """
+        results = self.db.execute_query(query)
+        
+        sinistros = []
+        for row in results:
+            # Só adiciona se as coordenadas não forem None
+            if row['latitude'] is not None and row['longitude'] is not None:
+                sinistros.append(SinistroComCoordenadas(
+                    id=row['id'],
+                    apolice_id=row['apolice_id'],
+                    data_sinistro=datetime.fromisoformat(row['data_sinistro']),
+                    tipo_sinistro=row['tipo_sinistro'],
+                    valor_prejuizo=row['valor_prejuizo'],
+                    causa=row['causa'],
+                    condicoes_climaticas=row['condicoes_climaticas'],
+                    precipitacao_mm=row['precipitacao_mm'],
+                    vento_kmh=row['vento_kmh'],
+                    temperatura_c=row['temperatura_c'],
+                    latitude=row['latitude'],
+                    longitude=row['longitude'],
+                    numero_apolice=row['numero_apolice'],
+                    created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None
+                ))
+        
+        return sinistros

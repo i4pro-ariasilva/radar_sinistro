@@ -14,6 +14,7 @@ sqlite3  # Incluído no Python padrão
 flask>=2.3.0
 requests>=2.31.0
 flask-cors>=4.0.0
+python-dotenv>=1.0.0  # Para carregar variáveis de ambiente
 
 # Visualização
 matplotlib>=3.7.0
@@ -59,6 +60,11 @@ cryptography>=41.0.0  # Para criptografia de dados sensíveis
 # Performance
 numba>=0.57.0  # JIT compilation para código crítico (opcional)
 
-# Interface web avançada (opcional)
+# Interface web avançada
+streamlit>=1.28.0  # Interface web interativa principal
+plotly>=5.15.0    # Gráficos interativos para Streamlit
+folium>=0.14.0    # Mapas interativos
+streamlit-folium>=0.15.0  # Integração Folium com Streamlit
+
+# Dashboards alternativos (opcional)
 # dash>=2.14.0  # Para dashboards interativos mais avançados
-# streamlit>=1.25.0  # Alternativa para interface web rápida

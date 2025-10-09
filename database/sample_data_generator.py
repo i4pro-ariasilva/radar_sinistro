@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import List
 import json
 
-# Lista de CEPs reais do Brasil para exemplo
+# Lista de CEPs reais do Brasil para exemplo com coordenadas mais precisas
 CEPS_EXEMPLO = [
     "01310-100", "20040-020", "30140-071", "40070-110", "50030-230",
     "60115-221", "70040-010", "80010-120", "90010-150", "13013-050",
@@ -17,16 +17,87 @@ CEPS_EXEMPLO = [
     "25071-160", "26020-053", "27213-415", "28035-042", "29055-620"
 ]
 
+# Coordenadas de cidades brasileiras seguras (longe do mar)
+COORDENADAS_CIDADES_BRASIL = [
+    # São Paulo e região
+    (-23.5505, -46.6333, "São Paulo - SP"),
+    (-23.6821, -46.8755, "Carapicuíba - SP"),
+    (-23.4273, -46.7453, "Guarulhos - SP"),
+    (-23.6629, -46.5383, "Santo André - SP"),
+    
+    # Rio de Janeiro (interior)
+    (-22.7519, -43.4654, "Nova Iguaçu - RJ"),
+    (-22.8809, -43.2096, "Niterói - RJ"),
+    (-22.5207, -43.1808, "Duque de Caxias - RJ"),
+    
+    # Minas Gerais
+    (-19.9167, -43.9345, "Belo Horizonte - MG"),
+    (-21.7594, -43.3486, "Juiz de Fora - MG"),
+    (-19.7417, -47.9297, "Uberlândia - MG"),
+    (-20.7596, -42.8735, "Governador Valadares - MG"),
+    
+    # Bahia (interior)
+    (-12.9714, -38.5014, "Salvador - BA"),
+    (-14.8615, -40.8442, "Vitória da Conquista - BA"),
+    (-15.5989, -56.0949, "Cáceres - MT"),
+    
+    # Pernambuco
+    (-8.0476, -34.8770, "Recife - PE"),
+    (-8.2819, -35.9744, "Caruaru - PE"),
+    
+    # Ceará
+    (-3.7327, -38.5267, "Fortaleza - CE"),
+    (-7.2306, -39.3136, "Juazeiro do Norte - CE"),
+    
+    # Distrito Federal
+    (-15.7801, -47.9292, "Brasília - DF"),
+    (-15.8331, -48.0429, "Águas Claras - DF"),
+    
+    # Paraná
+    (-25.4372, -49.2697, "Curitiba - PR"),
+    (-23.3045, -51.1696, "Maringá - PR"),
+    (-25.0916, -50.1668, "Ponta Grossa - PR"),
+    
+    # Rio Grande do Sul
+    (-30.0346, -51.2177, "Porto Alegre - RS"),
+    (-29.1678, -51.1794, "Caxias do Sul - RS"),
+    (-28.2578, -52.4095, "Passo Fundo - RS"),
+    
+    # Santa Catarina
+    (-27.5954, -48.5480, "Florianópolis - SC"),
+    (-26.9194, -49.0661, "Blumenau - SC"),
+    (-27.0965, -52.6181, "Chapecó - SC"),
+    
+    # Goiás
+    (-16.6869, -49.2648, "Goiânia - GO"),
+    (-16.4729, -49.1547, "Aparecida de Goiânia - GO"),
+    
+    # Espírito Santo
+    (-20.3155, -40.3128, "Vitória - ES"),
+    (-19.6326, -40.4034, "Linhares - ES"),
+    
+    # Mato Grosso
+    (-15.6014, -56.0979, "Cuiabá - MT"),
+    (-12.6819, -60.1187, "Vilhena - RO"),
+    
+    # Amazonas (cidades principais)
+    (-3.1190, -60.0217, "Manaus - AM"),
+    (-2.5307, -44.3068, "São Luís - MA"),
+]
+
 TIPOS_RESIDENCIA = ["casa", "apartamento", "sobrado"]
 
 TIPOS_SINISTRO = [
-    "Enchente", "Vendaval", "Granizo", "Alagamento", 
-    "Destelhamento", "Infiltração", "Queda de árvore"
+    "Enchente", "Vendaval", "Granizo", "Queimadas", "Alagamento", 
+    "Destelhamento", "Infiltração", "Queda de árvore", "Tempestade", 
+    "Tornado", "Raio", "Seca"
 ]
 
 CAUSAS_SINISTRO = [
-    "Chuva intensa", "Vento forte", "Tempestade", "Granizo",
-    "Alagamento urbano", "Transbordamento de rio", "Temporal"
+    "Chuva intensa", "Vento forte", "Tempestade", "Granizo severo",
+    "Alagamento urbano", "Transbordamento de rio", "Temporal",
+    "Incêndio florestal", "Queimada descontrolada", "Seca prolongada",
+    "Atividade elétrica", "Fenômeno climático extremo"
 ]
 
 
@@ -113,6 +184,14 @@ class SampleDataGenerator:
             max_damage = policy['valor_segurado'] * 0.8  # Máximo 80% do valor segurado
             damage_value = round(random.uniform(5000, max_damage), 2)
             
+            # Coordenadas próximas à apólice (mesmo local com pequena variação)
+            # Variação de até ~500m para simular endereços próximos
+            lat_variation = random.uniform(-0.005, 0.005)  # ~500m
+            lon_variation = random.uniform(-0.005, 0.005)  # ~500m
+            
+            sinistro_lat = policy['latitude'] + lat_variation
+            sinistro_lon = policy['longitude'] + lon_variation
+            
             # Condições climáticas do dia
             weather_conditions = self._generate_weather_conditions()
             
@@ -122,6 +201,8 @@ class SampleDataGenerator:
                 'tipo_sinistro': claim_type,
                 'valor_prejuizo': damage_value,
                 'causa': cause,
+                'latitude': round(sinistro_lat, 6),
+                'longitude': round(sinistro_lon, 6),
                 'condicoes_climaticas': json.dumps(weather_conditions),
                 'precipitacao_mm': weather_conditions.get('precipitacao_mm'),
                 'vento_kmh': weather_conditions.get('vento_kmh'),
@@ -193,28 +274,24 @@ class SampleDataGenerator:
         return start + timedelta(days=random_days, seconds=random_seconds)
     
     def _get_approximate_coordinates(self, cep: str) -> tuple:
-        """Retorna coordenadas aproximadas para CEPs brasileiros"""
-        # Mapeamento básico de CEP para coordenadas aproximadas
-        cep_coords = {
-            "01310-100": (-23.5505, -46.6333),  # São Paulo - SP
-            "20040-020": (-22.9068, -43.1729),  # Rio de Janeiro - RJ
-            "30140-071": (-19.9167, -43.9345),  # Belo Horizonte - MG
-            "40070-110": (-12.9714, -38.5014),  # Salvador - BA
-            "50030-230": (-8.0476, -34.8770),   # Recife - PE
-            "60115-221": (-3.7327, -38.5267),   # Fortaleza - CE
-            "70040-010": (-15.7801, -47.9292),  # Brasília - DF
-            "80010-120": (-25.4372, -49.2697),  # Curitiba - PR
-            "90010-150": (-30.0346, -51.2177),  # Porto Alegre - RS
-        }
+        """Retorna coordenadas terrestres seguras para CEPs brasileiros"""
         
-        if cep in cep_coords:
-            return cep_coords[cep]
+        # Seleciona uma coordenada aleatória das cidades brasileiras
+        lat_base, lon_base, cidade = random.choice(COORDENADAS_CIDADES_BRASIL)
         
-        # Se CEP não mapeado, usa coordenadas do Brasil com variação
-        return (
-            random.uniform(-33.0, 5.0),   # Latitude Brasil
-            random.uniform(-74.0, -32.0)  # Longitude Brasil
-        )
+        # Adiciona pequena variação para simular diferentes bairros
+        # Máximo ~5km de variação (aproximadamente 0.05 graus)
+        lat_variation = random.uniform(-0.05, 0.05)
+        lon_variation = random.uniform(-0.05, 0.05)
+        
+        final_lat = lat_base + lat_variation
+        final_lon = lon_base + lon_variation
+        
+        # Garantir que esteja dentro dos limites do Brasil
+        final_lat = max(-33.5, min(5.2, final_lat))  # Limites do Brasil
+        final_lon = max(-74.0, min(-28.8, final_lon))  # Limites do Brasil
+        
+        return (round(final_lat, 6), round(final_lon, 6))
     
     def _generate_weather_conditions(self) -> dict:
         """Gera condições climáticas realistas"""

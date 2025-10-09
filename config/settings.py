@@ -4,9 +4,18 @@ Configurações principais do sistema
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Diretório base do projeto
 BASE_DIR = Path(__file__).parent.parent
+
+# Carregar variáveis de ambiente do arquivo .env
+env_file = BASE_DIR / '.env'
+if env_file.exists():
+    load_dotenv(env_file)
+else:
+    # Tentar carregar de possíveis localizações
+    load_dotenv()
 
 # Configurações do banco de dados
 DATABASE_CONFIG = {
@@ -29,10 +38,15 @@ DATA_CONFIG = {
 # Configurações de APIs externas
 API_CONFIG = {
     'weather': {
-        'openweather_api_key': os.getenv('OPENWEATHER_API_KEY', ''),
+        'weatherapi_key': os.getenv('WEATHERAPI_KEY', ''),  # Nova API principal
+        'openweather_api_key': os.getenv('OPENWEATHER_API_KEY', ''),  # Backup
+        'weatherapi_base_url': 'https://api.weatherapi.com/v1',
         'inmet_base_url': 'https://apitempo.inmet.gov.br/estacao/',
         'cache_timeout_hours': 1,
-        'max_requests_per_minute': 60
+        'max_requests_per_minute': 60,
+        'request_delay_seconds': 1,
+        'enable_cache': True,
+        'fallback_apis': ['openweather', 'inmet']
     },
     'geocoding': {
         'nominatim_base_url': 'https://nominatim.openstreetmap.org/',

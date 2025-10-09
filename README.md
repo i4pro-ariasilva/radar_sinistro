@@ -135,7 +135,7 @@ crud.insert_apolice(nova_apolice)
 
 ### Sinistros Históricos
 - `data_sinistro`: Quando ocorreu
-- `tipo_sinistro`: Enchente/Vendaval/Granizo/etc
+- `tipo_sinistro`: Enchente/Vendaval/Granizo/Queimadas/etc
 - `valor_prejuizo`: Valor do dano
 - `condicoes_climaticas`: Dados do tempo no dia
 
@@ -147,14 +147,44 @@ crud.insert_apolice(nova_apolice)
 
 ## 🔧 Configuração
 
+### ⚡ Configuração Rápida da API Climática
+
+O sistema agora está integrado com **WeatherAPI.com** para dados climáticos em tempo real!
+
+#### 1. Obter Chave da API
+- Acesse: https://www.weatherapi.com
+- Crie uma conta gratuita
+- Copie sua API Key do painel
+
+#### 2. Configurar no Sistema
+```bash
+# Método automático (recomendado)
+python scripts/configure_weatherapi.py
+
+# Ou manualmente edite o arquivo .env
+WEATHERAPI_KEY=sua_chave_aqui
+```
+
+#### 3. Testar Integração
+```bash
+# Demonstração completa das funcionalidades
+python scripts/demo_weather_api.py
+
+# Ou teste via interface Streamlit
+streamlit run streamlit_app/app.py
+```
+
 ### Arquivo `config/settings.py`
 Principais configurações do sistema:
 
 ```python
-# APIs externas
+# APIs externas - ATUALIZADO para WeatherAPI
 API_CONFIG = {
     'weather': {
-        'openweather_api_key': 'sua_chave_aqui'
+        'weatherapi_key': 'sua_chave_aqui',  # API principal
+        'weatherapi_base_url': 'https://api.weatherapi.com/v1',
+        'cache_timeout_hours': 1,
+        'enable_cache': True
     }
 }
 
@@ -171,7 +201,8 @@ RISK_CONFIG = {
 
 ### Variáveis de Ambiente (.env)
 ```bash
-OPENWEATHER_API_KEY=sua_chave_api
+WEATHERAPI_KEY=sua_chave_api_weatherapi
+OPENWEATHER_API_KEY=sua_chave_backup
 FLASK_ENV=development
 LOG_LEVEL=INFO
 ```
@@ -196,14 +227,33 @@ LOG_LEVEL=INFO
 ## 🌦️ Integração Climática
 
 ### APIs Suportadas
-- **OpenWeatherMap**: Dados globais
-- **INMET**: Dados brasileiros
-- **Nominatim**: Geocoding
+- **WeatherAPI.com**: API principal com dados globais em tempo real ✅ **NOVO**
+- **OpenWeatherMap**: API backup para dados globais
+- **INMET**: Dados brasileiros específicos
+- **Nominatim**: Geocoding e coordenadas
+
+### Funcionalidades Climáticas
+- 🌡️ **Dados em tempo real**: Temperatura, umidade, vento, precipitação
+- 🗺️ **Geocoding automático**: Busca por CEP, cidade ou coordenadas
+- 💾 **Cache inteligente**: 1 hora de cache para otimizar performance
+- ⚠️ **Score de risco**: Cálculo automático baseado em condições climáticas
+- 📊 **Análise comparativa**: Múltiplas localizações simultaneamente
+
+### Dados Disponíveis
+- **Temperatura**: Atual e sensação térmica
+- **Precipitação**: Chuva em mm
+- **Vento**: Velocidade, direção e rajadas
+- **Umidade**: Percentual de umidade relativa
+- **Pressão**: Pressão atmosférica
+- **Visibilidade**: Visibilidade em km
+- **UV**: Índice ultravioleta
+- **Condições**: Descrição textual + código
 
 ### Cache Inteligente
-- Dados climáticos: 1 hora
-- Coordenadas: 30 dias
+- Dados climáticos: 1 hora de cache
+- Coordenadas: 30 dias de cache
 - Fallback automático entre APIs
+- Limpeza automática de cache expirado
 
 ## 🔍 Validação e Qualidade
 
@@ -292,11 +342,37 @@ df = processor.load_and_process('arquivo.csv', encoding='utf-8')
 ## 🚀 Próximos Passos
 
 ### Funcionalidades Futuras
-- 🗺️ Interface web com mapas interativos
+- 🗺️ Interface web com mapas interativos (✅ **IMPLEMENTADO**)
 - 📱 API REST completa
 - 🚨 Sistema de alertas automáticos
-- 📊 Dashboards em tempo real
+- 📊 Dashboards em tempo real (✅ **IMPLEMENTADO**)
 - 🤖 ML mais avançado com Deep Learning
+
+### 🌐 Interface Streamlit Disponível
+
+O sistema agora conta com uma **interface web moderna e interativa** construída com Streamlit!
+
+#### Como executar:
+```bash
+# Instalar dependências (se necessário)
+pip install streamlit folium streamlit-folium
+
+# Executar aplicação
+streamlit run streamlit_app/app.py
+```
+
+#### Ou use os scripts prontos:
+- **Windows**: `run_streamlit.ps1`
+- **Linux/Mac**: `run_streamlit.sh`
+
+#### Funcionalidades da Interface:
+- 🏠 **Página Principal** - Navegação e inicialização
+- 📊 **Dashboard** - Métricas e visualizações interativas
+- 📤 **Upload de Dados** - Carregar e processar arquivos CSV
+- ⚠️ **Análise de Risco** - Mapas interativos e simulações
+- 📈 **Relatórios** - Análises completas e exportação
+
+A interface será aberta em: `http://localhost:8501`
 
 ## 📞 Suporte
 

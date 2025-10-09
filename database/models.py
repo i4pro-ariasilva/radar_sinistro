@@ -63,6 +63,25 @@ class SinistroHistorico:
     temperatura_c: Optional[float] = None
     id: Optional[int] = None
     created_at: Optional[datetime] = field(default_factory=datetime.now)
+
+
+@dataclass
+class SinistroComCoordenadas:
+    """Modelo para sinistros com coordenadas das apólices"""
+    id: int
+    apolice_id: int
+    data_sinistro: datetime
+    tipo_sinistro: str
+    valor_prejuizo: float
+    causa: Optional[str] = None
+    condicoes_climaticas: Optional[str] = None
+    precipitacao_mm: Optional[float] = None
+    vento_kmh: Optional[float] = None
+    temperatura_c: Optional[float] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    numero_apolice: Optional[str] = None
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
     
     def __post_init__(self):
         if self.valor_prejuizo < 0:

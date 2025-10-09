@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS apolices (
     tipo_residencia VARCHAR(20) NOT NULL CHECK(tipo_residencia IN ('casa', 'apartamento', 'sobrado')),
     valor_segurado DECIMAL(12,2) NOT NULL CHECK(valor_segurado > 0),
     data_contratacao DATE NOT NULL,
+    data_inicio DATE, -- data de início da vigência (opcional)
+    score_risco DECIMAL(5,2), -- score de risco (0-100)
+    nivel_risco VARCHAR(10), -- baixo/medio/alto/critico (flexível)
+    probabilidade_sinistro DECIMAL(6,4), -- probabilidade estimada
     ativa BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -102,4 +106,31 @@ CREATE TRIGGER IF NOT EXISTS update_apolices_timestamp
     AFTER UPDATE ON apolices
 BEGIN
     UPDATE apolices SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+-- ==================== BLOQUEIO POR REGIÃO (PREFIXO CEP) ====================
+-- Tabela para controlar bloqueios de emissão de novas apólices por prefixo de CEP.
+-- Prefixo recomendado: 5 dígitos (ex.: '01234'). Pode suportar de 3 a 8 conforme evolução.
+-- Campos adicionais para auditoria e severidade do bloqueio.
+CREATE TABLE IF NOT EXISTS region_blocks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cep_prefix TEXT NOT NULL,
+    blocked INTEGER NOT NULL DEFAULT 1,           -- 1 = bloqueado, 0 = liberado
+    reason TEXT,                                  -- motivo do bloqueio
+    severity INTEGER,                             -- 1=normal,2=alto,3=critico (conceito inicial)
+    scope TEXT,                                   -- ex.: 'residencial' ou NULL para global
+    active INTEGER NOT NULL DEFAULT 1,            -- regra ativa (permite desativar sem remover)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_by TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_region_blocks_prefix ON region_blocks(cep_prefix);
+
+-- Trigger para atualizar updated_at em region_blocks
+CREATE TRIGGER IF NOT EXISTS trg_region_blocks_updated
+AFTER UPDATE ON region_blocks
+BEGIN
+    UPDATE region_blocks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END;

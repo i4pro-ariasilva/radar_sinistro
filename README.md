@@ -290,5 +290,133 @@ pip install -r requirements.txt
 
 **Sistema de Radar Climático - Prevenindo sinistros através de dados inteligentes e interface web moderna**
 
+---
+
+## 🔒 Bloqueio de Emissão por Região (Prefixo de CEP)
+
+O sistema suporta bloqueio de emissão de novas apólices com base em prefixos de CEP de alto risco.
+
+### Conceito
+Uma tabela `region_blocks` armazena regras de bloqueio por prefixo (recomendado 5 dígitos). Durante a emissão (individual ou em lote), o CEP informado é normalizado e comparado contra os prefixos ativos (mais específico vence). Se bloqueado, a apólice não é criada e o usuário recebe mensagem explicativa.
+
+### Campos Principais (`region_blocks`)
+- `cep_prefix`: somente dígitos (3–8, preferencial 5)
+- `blocked`: 1 bloqueado / 0 liberado
+- `reason`: texto explicando o motivo (ex.: "Alto risco hídrico")
+- `severity`: 1=normal, 2=alto, 3=crítico
+- `scope`: escopo do bloqueio (ex.: residencial, global)
+- `active`: regra ativa (permite desativar sem remover)
+- `created_at/created_by`, `updated_at/updated_by`: auditoria
+
+### Feature Flag
+Ativado por variável no módulo `policy_management.py`:
+```python
+REGION_BLOCK_FEATURE_ENABLED = True
+```
+Desative (False) para ignorar completamente a checagem sem remover código.
+
+### Prioridade de Prefixos
+Se existirem bloqueios para `012` e `01234`, um CEP `01234567` usará o bloqueio de `01234` (mais específico).
+
+### CLI para Administração
+Script: `scripts/manage_blocks.py`
+
+Exemplos:
+```bash
+python scripts/manage_blocks.py add --prefix 01234 --reason "Alto risco hídrico" --severity 2 --scope residencial --user admin
+python scripts/manage_blocks.py list --active-only
+python scripts/manage_blocks.py unblock --prefix 01234 --user admin
+python scripts/manage_blocks.py deactivate --prefix 01234 --user admin
+```
+
+### Integração no Fluxo
+Inserida antes do cálculo de risco e persistência em `policy_management.py`.
+Se bloqueado: mensagem explícita + não salva a apólice.
+Em lote: cada linha é avaliada individualmente; bloqueadas entram no relatório de falhas.
+
+### Logs Estruturados (exemplos)
+```
+BLOCK_CREATE prefix=01234 id=7 severity=2 scope=residencial
+BLOCK_MATCH cep=01234567 prefix=01234 severity=2
+BLOCK_STATUS prefix=01234 blocked=False
+```
+
+### Futuras Extensões (Planejadas)
+- Expiração (valid_until)
+- Origem automática (modelo de risco) `source=auto`
+- Cache em memória
+- Intervalos de CEP (start_cep/end_cep)
+- Geoespacial (polígonos) em banco avançado
+
+### Boas Práticas
+- Usar sempre prefixos de 5 dígitos para granularidade adequada.
+- Revisar periodicamente bloqueios com severidade 3 (crítico).
+- Documentar motivos de negócio no campo `reason` para auditoria.
+
+---
+
+## 🌦️ Status da API Climática (WeatherService)
+
+O método `WeatherService.health_check()` agora retorna duas chaves de status para garantir compatibilidade com diferentes partes do sistema:
+
+```json
+{
+   "api_status": "healthy" | "unavailable",
+   "status": "healthy" | "unavailable",  // alias para compatibilidade temporária
+   "cache_status": "healthy" | "error",
+   "service_stats": {"cache_hits": 0, ...},
+   "fallback_available": true,
+   "timestamp": "2025-10-09T..."
+}
+```
+
+Motivação: O `main.py` consumia `api_status`, enquanto `app.py` e `web_ml_integration.py` esperavam `health.get('status')`. Isso causava exibição de "API Indisponível" mesmo quando a API estava acessível. Foi adicionado o alias `status` sincronizado com `api_status`.
+
+### Uso recomendado
+```python
+from src.weather.weather_service import WeatherService
+ws = WeatherService()
+health = ws.health_check()
+if health['api_status'] == 'healthy':
+      print("API OK")
+```
+
+### Compatibilidade
+```python
+if health.get('status') == 'healthy':
+      # Também funciona
+      ...
+```
+
+### Próximo Passo (Refatoração)
+Padronizar todos os consumidores para uma única chave (`api_status`) e remover o alias para simplificar.
+
+### Diagnóstico rápido se o dashboard mostrar "API Indisponível"
+1. Imprimir `print(ws.health_check())` e verificar presença de ambas as chaves.
+2. Checar logs por mensagens de erro: `Health check falhou` em `openmeteo_client`.
+3. Verificar conectividade externa (firewall, rede).
+4. Forçar recarregamento da página para instanciar novo `WeatherService`.
+
+---
+
+### Compatibilidade Legada (get_weather_data)
+Foi adicionado um wrapper de compatibilidade para suportar código antigo que espera `weather_service.get_weather_data(lat, lon)` retornando objeto com atributo `.current.temperature_c`, `.current.precipitation_mm`, etc.
+
+Implementação:
+- Novo método `WeatherService.get_weather_data()` retorna `LegacyWeatherPayload`.
+- Este payload expõe `.current` e também o objeto original em `.raw`.
+
+Uso:
+```python
+ws = WeatherService()
+wd = ws.get_weather_data(-23.55, -46.63)
+print(wd.current.temperature_c)
+print(wd.raw.temperature_current)  # acesso ao objeto moderno
+```
+
+Plano futuro: Migrar consumidores para `get_current_weather()` diretamente e remover o wrapper.
+
+---
+
 
 

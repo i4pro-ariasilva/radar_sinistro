@@ -20,6 +20,8 @@ try:
     from database import get_database, CRUDOperations
     from src.ml.model_predictor import ModelPredictor
     from src.ml.feature_engineering import FeatureEngineer
+    # Feature flag simples para ativar bloqueio por região
+    REGION_BLOCK_FEATURE_ENABLED = True
 except ImportError as e:
     st.error(f"Erro ao importar módulos: {e}")
 
@@ -358,6 +360,21 @@ def show_individual_policy_form():
         except Exception as e:
             st.error(f"❌ Erro ao preparar dados: {e}")
             return
+
+        # Checar bloqueio de região antes de continuar
+        if 'REGION_BLOCK_FEATURE_ENABLED' in globals() and REGION_BLOCK_FEATURE_ENABLED:
+            try:
+                db = get_database()
+                crud = CRUDOperations(db)
+                blocked, reason, severity = crud.is_cep_blocked(policy_data['cep'], scope='residencial')
+                if blocked:
+                    emoji = '⛔'
+                    sev_label = {1: 'Normal', 2: 'Alto', 3: 'Crítico'}.get(severity, 'Alto')
+                    st.error(f"{emoji} Emissão bloqueada para região (prefixo CEP) - Motivo: {reason or 'Alto risco'} (Severidade: {sev_label})")
+                    return
+            except Exception as e:
+                # Fail-open: apenas logar aviso
+                st.warning(f"⚠️ Não foi possível validar bloqueio de região: {e}")
         
         # Calcular risco
         with st.spinner("🔮 Calculando risco da apólice..."):
@@ -622,6 +639,28 @@ def process_batch_policies(df):
             
             if len(policy_data['cep']) != 8:
                 raise ValueError("CEP deve ter 8 dígitos")
+
+            # Checar bloqueio de região antes de continuar
+            if 'REGION_BLOCK_FEATURE_ENABLED' in globals() and REGION_BLOCK_FEATURE_ENABLED:
+                try:
+                    db = get_database()
+                    crud = CRUDOperations(db)
+                    blocked, reason, severity = crud.is_cep_blocked(policy_data['cep'], scope='residencial')
+                    if blocked:
+                        failed_policies.append({
+                            'numero_apolice': policy_data['numero_apolice'],
+                            'erro': f"Região bloqueada: {reason or 'Alto risco'}",
+                            'blocked': True
+                        })
+                        continue  # Não processa risco nem salva
+                except Exception as e:
+                    # Fail-open: seguir e logar
+                    failed_policies.append({
+                        'numero_apolice': policy_data['numero_apolice'],
+                        'erro': f"Aviso bloqueio não verificado: {e}",
+                        'blocked': False
+                    })
+                    # continuar processamento normal
             
             # Calcular risco
             risk_data = calculate_policy_risk(policy_data)

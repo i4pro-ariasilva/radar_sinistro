@@ -58,6 +58,9 @@ class Database:
                 conn.commit()
             
             logger.info("Banco de dados inicializado com sucesso")
+
+            # Após inicialização, garantir colunas extras em apolices (migração leve)
+            self._ensure_apolices_extended_columns()
             
         except Exception as e:
             logger.error(f"Erro ao inicializar banco de dados: {e}")
@@ -210,6 +213,41 @@ class Database:
         except Exception as e:
             logger.error(f"Erro ao obter estatísticas: {e}")
             return stats
+
+    # ==================== MIGRAÇÕES LEVES ====================
+    def _ensure_apolices_extended_columns(self):
+        """Verifica se colunas de risco e data_inicio existem em 'apolices'; se não, adiciona.
+
+        Colunas alvo:
+          - data_inicio DATE
+          - score_risco DECIMAL(5,2)
+          - nivel_risco VARCHAR(10)
+          - probabilidade_sinistro DECIMAL(6,4)
+        """
+        try:
+            existing_cols = {row['name'] for row in self.get_table_info('apolices')}
+            alters = []
+            if 'data_inicio' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN data_inicio DATE")
+            if 'score_risco' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN score_risco DECIMAL(5,2)")
+            if 'nivel_risco' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN nivel_risco VARCHAR(10)")
+            if 'probabilidade_sinistro' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN probabilidade_sinistro DECIMAL(6,4)")
+            if not alters:
+                logger.info("Schema apolices já possui colunas estendidas")
+                return
+            with self.get_connection() as conn:
+                for stmt in alters:
+                    try:
+                        conn.execute(stmt)
+                        logger.info(f"Migracao executada: {stmt}")
+                    except Exception as e:
+                        logger.warning(f"Falha ao executar migração '{stmt}': {e}")
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Não foi possível validar/alterar colunas em apolices: {e}")
 
 
 # Instância global do banco (singleton pattern)

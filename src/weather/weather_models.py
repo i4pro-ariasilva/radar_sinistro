@@ -131,6 +131,45 @@ class WeatherForecast:
             return self.daily_forecasts[days_ahead]
         return None
 
+class LegacyWeatherCurrent:
+    """Adaptador para compatibilidade com código legado que espera weather_data.current.*"""
+    def __init__(self, data: WeatherData):
+        self.temperature_c = data.temperature_current
+        self.precipitation_mm = data.precipitation
+        self.wind_speed_kmh = data.wind_speed
+        self.humidity_percent = data.humidity
+        self.pressure_hpa = data.pressure_msl
+        self.conditions = data.conditions.value
+        self.timestamp = data.timestamp
+
+class LegacyWeatherPayload:
+    """Wrapper para expor interface antiga (weather_data.current)"""
+    def __init__(self, data: WeatherData):
+        self.current = LegacyWeatherCurrent(data)
+        self.raw = data  # acesso ao objeto original
+        self.source = data.source
+        self.is_cached = data.is_cached
+        self.latitude = data.latitude
+        self.longitude = data.longitude
+        self.timestamp = data.timestamp
+
+    def to_dict(self) -> dict:
+        return {
+            'current': {
+                'temperature_c': self.current.temperature_c,
+                'precipitation_mm': self.current.precipitation_mm,
+                'wind_speed_kmh': self.current.wind_speed_kmh,
+                'humidity_percent': self.current.humidity_percent,
+                'conditions': self.current.conditions,
+                'timestamp': self.current.timestamp.isoformat() if self.current.timestamp else None
+            },
+            'source': self.source,
+            'is_cached': self.is_cached,
+            'latitude': self.latitude,
+            'longitude': self.longitude,
+            'timestamp': self.timestamp.isoformat() if self.timestamp else None
+        }
+
 def weather_code_to_conditions(weather_code: Optional[int]) -> WeatherConditions:
     """
     Converte código WMO da OpenMeteo para condições padronizadas

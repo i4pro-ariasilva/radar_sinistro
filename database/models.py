@@ -36,6 +36,11 @@ class Apolice:
     id: Optional[int] = None
     created_at: Optional[datetime] = field(default_factory=datetime.now)
     updated_at: Optional[datetime] = field(default_factory=datetime.now)
+    # Campos estendidos (podem ser preenchidos após cálculo de risco)
+    data_inicio: Optional[datetime] = None
+    score_risco: Optional[float] = 0.0
+    nivel_risco: Optional[str] = 'baixo'
+    probabilidade_sinistro: Optional[float] = 0.0
     
     def __post_init__(self):
         # Validações básicas
@@ -51,6 +56,10 @@ class Apolice:
         # Validação básica de CEP (formato XXXXX-XXX)
         if len(self.cep.replace('-', '')) != 8:
             raise ValueError("CEP deve ter 8 dígitos")
+
+        # Validar nível de risco se já preenchido (flexível, ignora se None)
+        if self.nivel_risco and self.nivel_risco not in [n.value for n in NivelRisco]:
+            raise ValueError(f"Nível de risco inválido: {self.nivel_risco}")
 
 
 @dataclass
@@ -137,6 +146,42 @@ class PrevisaoRecente:
     cep: str
     tipo_residencia: str
     valor_segurado: float
+
+
+@dataclass
+class RegionBlock:
+    """Modelo para bloqueio por prefixo de CEP."""
+    cep_prefix: str
+    blocked: bool = True
+    reason: str = ""
+    severity: int = 1  # 1=normal,2=alto,3=critico
+    scope: str = "residencial"  # pode ser 'global' ou outro produto futuramente
+    active: bool = True
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    created_by: Optional[str] = None
+    updated_at: Optional[datetime] = field(default_factory=datetime.now)
+    updated_by: Optional[str] = None
+    id: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "cep_prefix": self.cep_prefix,
+            "blocked": self.blocked,
+            "reason": self.reason,
+            "severity": self.severity,
+            "scope": self.scope,
+            "active": self.active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "created_by": self.created_by,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "updated_by": self.updated_by,
+        }
+
+    def is_effective(self) -> bool:
+        """Retorna True se o bloqueio deve ser aplicado (ativo e marcado como bloqueado)."""
+        return self.active and self.blocked
+
 
 
 # Funções utilitárias para conversão

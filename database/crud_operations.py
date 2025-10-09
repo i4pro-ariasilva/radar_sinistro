@@ -8,7 +8,8 @@ import logging
 from .database import Database
 from .models import (
     Apolice, SinistroHistorico, PrevisaoRisco, DadoClimatico,
-    ApoliceAtiva, PrevisaoRecente, determinar_nivel_risco
+    ApoliceAtiva, PrevisaoRecente, determinar_nivel_risco,
+    RegionBlock
 )
 
 logger = logging.getLogger(__name__)
@@ -337,3 +338,166 @@ class CRUDOperations:
             ))
         
         return stats
+
+    # ==================== BLOQUEIOS POR REGIÃO (CEP PREFIX) ====================
+
+    @staticmethod
+    def _normalize_cep(cep: str) -> str:
+        """Remove caracteres não numéricos e retorna apenas dígitos."""
+        if not cep:
+            return ""
+        return "".join(filter(str.isdigit, cep))
+
+    @staticmethod
+    def _generate_prefixes(cep_digits: str, min_len: int = 3, max_len: int = 8) -> List[str]:
+        """Gera lista de prefixos decrescentes para lookup (mais específico primeiro)."""
+        if not cep_digits:
+            return []
+        length = len(cep_digits)
+        upper = min(length, max_len)
+        prefixes = []
+        for l in range(upper, min_len - 1, -1):  # decresce
+            prefixes.append(cep_digits[:l])
+        return prefixes
+
+    def create_block(self, cep_prefix: str, reason: str, severity: int = 1,
+                     scope: str = "residencial", created_by: str = "system") -> int:
+        """Cria um bloqueio por prefixo de CEP. Usa inserção ou atualização se já existir."""
+        cep_prefix_digits = self._normalize_cep(cep_prefix)
+        if not (3 <= len(cep_prefix_digits) <= 8):
+            raise ValueError("Prefixo de CEP deve ter entre 3 e 8 dígitos")
+
+        # Tentar inserir; se existir, atualizar
+        existing = self.db.execute_query(
+            "SELECT id FROM region_blocks WHERE cep_prefix = ?", (cep_prefix_digits,)
+        )
+        now_iso = datetime.now().isoformat()
+        if existing:
+            query = """
+            UPDATE region_blocks
+            SET blocked = 1, reason = ?, severity = ?, scope = ?, active = 1,
+                updated_at = ?, updated_by = ?
+            WHERE id = ?
+            """
+            self.db.execute_command(query, (reason, severity, scope, now_iso, created_by, existing[0]['id']))
+            # LOG_EVENT BLOCK_UPDATE prefix=<cep_prefix> severity=<severity>
+            logger.info(f"BLOCK_UPDATE prefix={cep_prefix_digits} severity={severity} scope={scope}")
+            return existing[0]['id']
+        else:
+            query = """
+            INSERT INTO region_blocks (cep_prefix, blocked, reason, severity, scope, active, created_at, created_by, updated_at, updated_by)
+            VALUES (?, 1, ?, ?, ?, 1, ?, ?, ?, ?)
+            """
+            block_id = self.db.execute_command(query, (
+                cep_prefix_digits, reason, severity, scope,
+                now_iso, created_by, now_iso, created_by
+            ))
+            # LOG_EVENT BLOCK_CREATE prefix=<cep_prefix> id=<block_id>
+            logger.info(f"BLOCK_CREATE prefix={cep_prefix_digits} id={block_id} severity={severity} scope={scope}")
+            return block_id
+
+    def remove_block(self, cep_prefix: str, updated_by: str = "system", hard_delete: bool = False) -> None:
+        """Remove ou desativa bloqueio de prefixo de CEP."""
+        cep_prefix_digits = self._normalize_cep(cep_prefix)
+        if hard_delete:
+            self.db.execute_command(
+                "DELETE FROM region_blocks WHERE cep_prefix = ?", (cep_prefix_digits,)
+            )
+            # LOG_EVENT BLOCK_REMOVE prefix=<cep_prefix> hard_delete=true
+            logger.info(f"BLOCK_REMOVE prefix={cep_prefix_digits} hard=true")
+        else:
+            now_iso = datetime.now().isoformat()
+            self.db.execute_command(
+                "UPDATE region_blocks SET active = 0, blocked = 0, updated_at = ?, updated_by = ? WHERE cep_prefix = ?",
+                (now_iso, updated_by, cep_prefix_digits)
+            )
+            # LOG_EVENT BLOCK_DEACTIVATE prefix=<cep_prefix>
+            logger.info(f"BLOCK_DEACTIVATE prefix={cep_prefix_digits}")
+
+    def set_block_status(self, cep_prefix: str, blocked: bool, reason: Optional[str] = None,
+                         updated_by: str = "system") -> None:
+        """Altera status (bloqueado/liberado) mantendo registro ativo."""
+        cep_prefix_digits = self._normalize_cep(cep_prefix)
+        now_iso = datetime.now().isoformat()
+        self.db.execute_command(
+            "UPDATE region_blocks SET blocked = ?, reason = COALESCE(?, reason), updated_at = ?, updated_by = ? WHERE cep_prefix = ?",
+            (1 if blocked else 0, reason, now_iso, updated_by, cep_prefix_digits)
+        )
+        # LOG_EVENT BLOCK_STATUS prefix=<cep_prefix> blocked=<blocked>
+        logger.info(f"BLOCK_STATUS prefix={cep_prefix_digits} blocked={blocked}")
+
+    def list_blocks(self, active_only: bool = True, scope: Optional[str] = None) -> List[RegionBlock]:
+        """Lista bloqueios conforme filtros."""
+        conditions = []
+        params: List = []
+        if active_only:
+            conditions.append("active = 1")
+        if scope:
+            conditions.append("(scope = ? OR scope IS NULL)")
+            params.append(scope)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT * FROM region_blocks {where_clause} ORDER BY LENGTH(cep_prefix) DESC"
+        rows = self.db.execute_query(query, tuple(params))
+        blocks: List[RegionBlock] = []
+        for r in rows:
+            blocks.append(RegionBlock(
+                id=r['id'],
+                cep_prefix=r['cep_prefix'],
+                blocked=bool(r['blocked']),
+                reason=r['reason'] or "",
+                severity=r['severity'] or 1,
+                scope=r['scope'] or "residencial",
+                active=bool(r['active']),
+                created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+                created_by=r['created_by'],
+                updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None,
+                updated_by=r['updated_by']
+            ))
+        return blocks
+
+    def lookup_region_block(self, cep: str, scope: str = "residencial") -> Optional[RegionBlock]:
+        """Retorna bloqueio mais específico (prefixo maior) aplicável ao CEP informado."""
+        cep_digits = self._normalize_cep(cep)
+        if len(cep_digits) < 3:
+            return None
+        prefixes = self._generate_prefixes(cep_digits)
+        # Consulta única com IN
+        placeholders = ",".join(["?"] * len(prefixes))
+        query = f"""
+            SELECT * FROM region_blocks
+            WHERE cep_prefix IN ({placeholders})
+              AND active = 1
+              AND (scope = ? OR scope IS NULL)
+            ORDER BY LENGTH(cep_prefix) DESC
+            LIMIT 1
+        """
+        params = prefixes + [scope]
+        rows = self.db.execute_query(query, tuple(params))
+        if not rows:
+            return None
+        r = rows[0]
+        return RegionBlock(
+            id=r['id'],
+            cep_prefix=r['cep_prefix'],
+            blocked=bool(r['blocked']),
+            reason=r['reason'] or "",
+            severity=r['severity'] or 1,
+            scope=r['scope'] or "residencial",
+            active=bool(r['active']),
+            created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+            created_by=r['created_by'],
+            updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None,
+            updated_by=r['updated_by']
+        )
+
+    def is_cep_blocked(self, cep: str, scope: str = "residencial") -> Tuple[bool, Optional[str], Optional[int]]:
+        """Verifica se o CEP está bloqueado. Retorna (blocked, reason, severity)."""
+        block = self.lookup_region_block(cep, scope=scope)
+        if block and block.is_effective():
+            # LOG_EVENT BLOCK_MATCH cep=<cep> prefix=<block_prefix> severity=<severity>
+            logger.info(f"BLOCK_MATCH cep={cep} prefix={block.cep_prefix} severity={block.severity}")
+            return True, block.reason or None, block.severity
+        # Mesmo que não esteja bloqueado, se existir registro retornamos a reason para contexto.
+        if block:
+            return False, block.reason or None, None
+        return False, None, None

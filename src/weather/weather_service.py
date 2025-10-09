@@ -258,6 +258,38 @@ class WeatherService:
             'is_cached': weather_data.is_cached,
             'timestamp': weather_data.timestamp.isoformat()
         }
+
+    # ------------------------------------------------------------
+    # Compatibilidade Legada
+    # ------------------------------------------------------------
+    def get_weather_data(self, latitude: float, longitude: float, include_history: bool = True):
+        """Método legado para compatibilidade
+
+        Alguns componentes (ex: integração web ML) esperam um método
+        `get_weather_data(lat, lon)` que retorne objeto WeatherData.
+
+        Args:
+            latitude: Latitude em graus decimais
+            longitude: Longitude em graus decimais
+            include_history: Se deve tentar dados com histórico (mantido para assinatura futura)
+
+        Returns:
+            WeatherData ou None se falhar (usa fallback antes de retornar None)
+        """
+        try:
+            # Reuso da estratégia atual (API + cache + fallback completo)
+            data = self.get_current_weather(latitude, longitude, use_cache=True)
+            if data is None:
+                # Garantir que sempre retorna algum dado conforme comportamento atual
+                data = self._generate_minimal_fallback(latitude, longitude)
+            # Retorna wrapper de compatibilidade
+            from .weather_models import LegacyWeatherPayload
+            return LegacyWeatherPayload(data)
+        except Exception as e:
+            logger.error(f"Erro em get_weather_data: {e}")
+            # Última tentativa
+            from .weather_models import LegacyWeatherPayload
+            return LegacyWeatherPayload(self._generate_minimal_fallback(latitude, longitude))
     
     def health_check(self) -> dict:
         """
@@ -276,7 +308,10 @@ class WeatherService:
         total_requests = sum(self.stats.values())
         
         return {
+            # Mantém chave original 'api_status' consumida por main.py
             'api_status': 'healthy' if api_healthy else 'unavailable',
+            # Alias adicional para compatibilidade com componentes que esperam 'status'
+            'status': 'healthy' if api_healthy else 'unavailable',
             'cache_status': 'healthy' if cache_stats else 'error',
             'service_stats': self.stats.copy(),
             'total_requests': total_requests,

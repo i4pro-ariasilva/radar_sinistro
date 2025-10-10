@@ -1649,8 +1649,16 @@ def show_mapa_calor():
             
             if st.button("🎭 Gerar Mapa com Dados de Exemplo", use_container_width=True):
                 with st.spinner("Gerando mapa com dados simulados..."):
-                    # Usar a função do mapa de calor com dados None (vai gerar dados de exemplo)
-                    criar_interface_streamlit(None)
+                    # Gerar DataFrame de exemplo para o mapa de calor
+                    import pandas as pd
+                    mock_policies = generate_mock_policies_data()
+                    mock_df = pd.DataFrame([{
+                        'cep': p['cep'],
+                        'risk_score': p['risk_score'],
+                        'insured_value': p['insured_value'],
+                        'policy_id': p['policy_number']
+                    } for p in mock_policies])
+                    criar_interface_streamlit(mock_df)
             return
         
         # Converter dados do banco para DataFrame
@@ -1724,7 +1732,8 @@ def show_mapa_calor():
         st.warning("🔄 Usando dados de exemplo...")
         
         # Fallback para dados de exemplo
-        criar_interface_streamlit(None)
+        import pandas as pd
+        criar_interface_streamlit(pd.DataFrame())
 
 if __name__ == "__main__":
     main()

@@ -72,15 +72,18 @@ class CRUDOperations:
         if results:
             row = results[0]
             return Apolice(
-                id=row['id'],
                 numero_apolice=row['numero_apolice'],
+                segurado=row.get('segurado', 'N/A'),
                 cep=row['cep'],
-                latitude=row['latitude'],
-                longitude=row['longitude'],
                 tipo_residencia=row['tipo_residencia'],
                 valor_segurado=row['valor_segurado'],
                 data_contratacao=datetime.fromisoformat(row['data_contratacao']),
+                email=row.get('email'),
+                telefone=row.get('telefone'),
+                latitude=row['latitude'],
+                longitude=row['longitude'],
                 ativa=bool(row['ativa']),
+                id=row['id'],
                 created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
                 updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
             )
@@ -125,15 +128,18 @@ class CRUDOperations:
         
         for row in results:
             apolices.append(Apolice(
-                id=row['id'],
                 numero_apolice=row['numero_apolice'],
+                segurado=row.get('segurado', 'N/A'),
                 cep=row['cep'],
-                latitude=row['latitude'],
-                longitude=row['longitude'],
                 tipo_residencia=row['tipo_residencia'],
                 valor_segurado=row['valor_segurado'],
                 data_contratacao=datetime.fromisoformat(row['data_contratacao']),
-                ativa=bool(row['ativa'])
+                email=row.get('email'),
+                telefone=row.get('telefone'),
+                latitude=row['latitude'],
+                longitude=row['longitude'],
+                ativa=bool(row['ativa']),
+                id=row['id']
             ))
         
         return apolices

@@ -147,6 +147,8 @@ def save_policy_to_database(policy_data, risk_data):
             tipo_residencia=policy_data['tipo_residencia'].lower(),  # Converter para minúscula
             valor_segurado=policy_data['valor_segurado'],
             data_contratacao=datetime.fromisoformat(policy_data['data_inicio']),
+            email=policy_data.get('email', ''),
+            telefone=policy_data.get('telefone', ''),
             latitude=None,  # Será preenchido posteriormente via geocoding
             longitude=None,  # Será preenchido posteriormente via geocoding
             ativa=True
@@ -196,6 +198,8 @@ def save_policy_simple(policy_data, risk_data):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 numero_apolice TEXT UNIQUE,
                 segurado TEXT,
+                email TEXT,              -- NOVO
+                telefone TEXT,           -- NOVO
                 cep TEXT,
                 latitude REAL,
                 longitude REAL,
@@ -215,14 +219,16 @@ def save_policy_simple(policy_data, risk_data):
         # Inserir dados na tabela principal apolices
         cursor.execute('''
             INSERT INTO apolices 
-            (numero_apolice, segurado, cep, valor_segurado, 
-             data_inicio, tipo_residencia, score_risco, nivel_risco, 
+            (numero_apolice, segurado, email, telefone, cep, valor_segurado,
+             data_inicio, tipo_residencia, score_risco, nivel_risco,
              probabilidade_sinistro, created_at, data_contratacao, ativa,
              latitude, longitude)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             policy_data['numero_apolice'],
             policy_data.get('segurado', 'N/A'),
+            policy_data.get('email',''),
+            policy_data.get('telefone',''),
             policy_data['cep'],
             float(policy_data['valor_segurado']),
             policy_data['data_inicio'],
@@ -231,10 +237,10 @@ def save_policy_simple(policy_data, risk_data):
             risk_data['nivel_risco'],
             float(risk_data['probabilidade']),
             datetime.now().isoformat(),
-            policy_data['data_inicio'],  # data_contratacao = data_inicio
-            1,  # ativa = 1
-            -15.0,  # latitude padrão (centro do Brasil)
-            -47.0   # longitude padrão (centro do Brasil)
+            policy_data['data_inicio'],
+            1,
+            -15.0,
+            -47.0
         ))
         
         policy_id = cursor.lastrowid
@@ -287,19 +293,31 @@ def show_individual_policy_form():
                 placeholder="Ex: POL-2024-001234",
                 help="Número único da apólice"
             )
-            
+
             segurado = st.text_input(
                 "Nome do Segurado *",
                 placeholder="Ex: João Silva Santos",
                 help="Nome completo do segurado"
             )
-            
+
+            email = st.text_input(
+                "E-mail do Segurado",
+                placeholder="Ex: joao@email.com",
+                help="E-mail para contato do segurado"
+            )
+
+            telefone = st.text_input(
+                "Telefone do Segurado",
+                placeholder="Ex: (11) 91234-5678",
+                help="Telefone para contato do segurado"
+            )
+
             cep = st.text_input(
                 "CEP *",
                 placeholder="Ex: 01234-567",
                 help="CEP do local segurado"
             )
-            
+
             valor_segurado = st.number_input(
                 "Valor Segurado (R$) *",
                 min_value=1000.0,
@@ -350,6 +368,8 @@ def show_individual_policy_form():
             policy_data = {
                 'numero_apolice': numero_apolice.strip(),
                 'segurado': segurado.strip(),
+                'email': email.strip() if email else '',
+                'telefone': telefone.strip() if telefone else '',
                 'cep': cep.strip(),
                 'valor_segurado': float(valor_segurado),
                 'data_inicio': data_inicio.isoformat(),
@@ -452,8 +472,12 @@ def show_batch_policy_upload():
             
             # Validar dados
             required_columns = ['numero_apolice', 'segurado', 'cep', 'valor_segurado', 'data_inicio', 'tipo_residencia']
+            optional_columns = ['email', 'telefone']
             missing_columns = [col for col in required_columns if col not in df.columns]
-            
+            # Adicionar colunas opcionais se não existirem
+            for col in optional_columns:
+                if col not in df.columns:
+                    df[col] = ''
             if missing_columns:
                 st.error(f"❌ Colunas obrigatórias faltando: {', '.join(missing_columns)}")
                 return
@@ -502,6 +526,8 @@ def show_batch_policy_upload():
     template_data = pd.DataFrame({
         'numero_apolice': ['POL-2024-000001', 'POL-2024-000002', 'POL-2024-000003'],
         'segurado': ['João Silva Santos', 'Maria Oliveira Costa', 'Pedro Henrique Ferreira'],
+        'email': ['joao@email.com', 'maria@email.com', 'pedro@email.com'],
+        'telefone': ['(11) 91234-5678', '(21) 99876-5432', '(31) 98765-4321'],
         'cep': ['01234-567', '89012345', '13579-024'],
         'valor_segurado': [300000.0, 450000.0, 180000.0],
         'data_inicio': ['2024-10-07', '2024-10-07', '2024-10-07'],
@@ -610,7 +636,9 @@ def process_batch_policies(df):
             policy_data = {
                 'numero_apolice': str(row['numero_apolice']).strip(),
                 'segurado': str(row['segurado']).strip(),
-                'cep': str(row['cep']).strip().replace('-', ''),  # Remover hífen do CEP
+                'email': str(row.get('email','')).strip(),
+                'telefone': str(row.get('telefone','')).strip(),
+                'cep': str(row['cep']).strip().replace('-', ''),
                 'valor_segurado': float(row['valor_segurado']),
                 'data_inicio': str(row['data_inicio']),
                 'tipo_residencia': str(row['tipo_residencia']).strip() if pd.notna(row.get('tipo_residencia')) else 'Casa'

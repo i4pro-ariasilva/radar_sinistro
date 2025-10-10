@@ -690,8 +690,12 @@ def show_policies_at_risk():
             ["Todos", "Última semana", "Último mês", "Últimos 3 meses", "Último ano"]
         )
     
-    # Buscar dados REAIS de apólices do banco de dados
-    policies_data = get_real_policies_data(search_policy, risk_filter, policy_type, value_range)
+
+    # Persistir dados das apólices em session_state para evitar mudanças a cada rerun
+    if 'policies_data_cache' not in st.session_state or st.session_state.get('last_policy_filters', None) != (search_policy, risk_filter, policy_type, value_range):
+        st.session_state.policies_data_cache = get_real_policies_data(search_policy, risk_filter, policy_type, value_range)
+        st.session_state.last_policy_filters = (search_policy, risk_filter, policy_type, value_range)
+    policies_data = st.session_state.policies_data_cache
     
     # Métricas resumidas
     st.markdown("---")
@@ -723,23 +727,23 @@ def show_policies_at_risk():
     if policies_data:
         # Criar DataFrame
         df = pd.DataFrame(policies_data)
-        
+
         # Adicionar colunas formatadas
         df['risk_level'] = df['risk_score'].apply(get_risk_level_emoji)
         df['valor_formatado'] = df['insured_value'].apply(lambda x: f"R$ {x:,.0f}")
         df['ultima_analise'] = df['last_analysis'].apply(lambda x: x.strftime('%d/%m/%Y'))
-        
+
         # Selecionar e renomear colunas para exibição
         display_df = df[[
-            'policy_number', 'risk_level', 'risk_score', 'property_type', 
+            'policy_number', 'risk_level', 'risk_score', 'property_type',
             'cep', 'valor_formatado', 'ultima_analise', 'status'
         ]].copy()
-        
+
         display_df.columns = [
-            'Nº da Apólice', 'Risco', 'Score', 'Tipo', 
+            'Nº da Apólice', 'Risco', 'Score', 'Tipo',
             'CEP', 'Valor Segurado', 'Última Análise', 'Status'
         ]
-        
+
         # Configurar cores baseadas no risco
         def highlight_risk(row):
             if row['Score'] >= 75:
@@ -750,26 +754,46 @@ def show_policies_at_risk():
                 return ['background-color: #e3f2fd; color: #1976d2; font-weight: bold'] * len(row)
             else:
                 return ['background-color: #e8f5e8; color: #2e7d32; font-weight: bold'] * len(row)
-        
+
         # Exibir tabela com estilo
         styled_df = display_df.style.apply(highlight_risk, axis=1)
         st.dataframe(styled_df, use_container_width=True, height=400)
-        
+
+
+        # Seleção compacta com multiselect, sem alterar a tabela
+        st.markdown("---")
+        st.markdown("### ✉️ Enviar Mensagem de Risco para Segurados")
+        selectable_policies = df['policy_number'].tolist()
+        # Usar session_state para manter seleção sem afetar dados
+        if 'selected_policies' not in st.session_state:
+            st.session_state.selected_policies = []
+
+        selected_policies = st.multiselect(
+            "Selecione as apólices para notificar:",
+            options=selectable_policies,
+            default=st.session_state.selected_policies,
+            format_func=lambda x: f"{x} | {get_risk_level_emoji(df[df['policy_number']==x]['risk_score'].iloc[0])} | Score: {df[df['policy_number']==x]['risk_score'].iloc[0]} | {df[df['policy_number']==x]['property_type'].iloc[0].title()} | CEP: {df[df['policy_number']==x]['cep'].iloc[0]}"
+        )
+        st.session_state.selected_policies = selected_policies
+
+        if st.button("🚨 Enviar mensagem de risco", use_container_width=True, disabled=len(selected_policies)==0):
+            st.success(f"Mensagem de risco enviada para {len(selected_policies)} assegurado(s): {', '.join(selected_policies)}")
+
         # Detalhes da apólice selecionada
         st.markdown("---")
         st.markdown("### 🔍 Detalhes da Apólice")
-        
+
         selected_policy = st.selectbox(
             "Selecione uma apólice para ver detalhes:",
             options=df['policy_number'].tolist(),
             format_func=lambda x: f"{x} - Score: {df[df['policy_number']==x]['risk_score'].iloc[0]}"
         )
-        
+
         if selected_policy:
             policy_details = df[df['policy_number'] == selected_policy].iloc[0]
-            
+
             col1, col2 = st.columns(2)
-            
+
             with col1:
                 st.markdown("#### 📋 Informações Básicas")
                 st.write(f"**Número da Apólice:** {policy_details['policy_number']}")
@@ -778,7 +802,7 @@ def show_policies_at_risk():
                 st.write(f"**CEP:** {policy_details['cep']}")
                 st.write(f"**Área:** {policy_details['area']} m² (estimado)")
                 st.write(f"**Status:** {policy_details['status']}")
-            
+
             with col2:
                 st.markdown("#### 💰 Informações Financeiras e Risco")
                 st.write(f"**Valor Segurado:** R$ {policy_details['insured_value']:,.2f}")
@@ -786,7 +810,7 @@ def show_policies_at_risk():
                 st.write(f"**Score de Risco:** {policy_details['risk_score']:.1f}/100")
                 st.write(f"**Nível de Risco:** {policy_details.get('risk_level', 'N/A').title()}")
                 st.write(f"**Probabilidade de Sinistro:** {policy_details.get('probability', 0)*100:.1f}%")
-                
+
                 # Botão para nova análise
                 if st.button(f"🔄 Atualizar Análise - {selected_policy}", use_container_width=True):
                     with st.spinner("Atualizando Análise de Risco..."):

@@ -24,12 +24,16 @@ class NivelRisco(Enum):
 @dataclass
 class Apolice:
     """Modelo para dados de apólices de seguro"""
+    # Campos obrigatórios (sem valores default) DEVEM vir primeiro
     numero_apolice: str
     segurado: str
     cep: str
     tipo_residencia: str
     valor_segurado: float
     data_contratacao: datetime
+    # Campos opcionais (com defaults) depois
+    email: Optional[str] = None
+    telefone: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     ativa: bool = True

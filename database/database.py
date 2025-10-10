@@ -58,10 +58,98 @@ class Database:
                 conn.commit()
             
             logger.info("Banco de dados inicializado com sucesso")
+
+            # Após inicialização, garantir colunas novas (migração leve)
+            self._apply_light_migrations()
+            # Garantir tabelas adicionais (ex: notificações) caso DB já existisse antes da atualização do script
+            self._ensure_additional_tables()
             
         except Exception as e:
             logger.error(f"Erro ao inicializar banco de dados: {e}")
             raise
+
+    def _apply_light_migrations(self):
+        """Aplica migrações simples (ADD COLUMN) sem necessidade de versionamento complexo.
+        Idempotente: só adiciona se a coluna não existir.
+        """
+        expected_columns = {
+            'apolices': [
+                'email TEXT',
+                'telefone TEXT',
+                'data_inicio DATE',
+                'score_risco REAL',
+                'nivel_risco TEXT',
+                'probabilidade_sinistro REAL'
+            ]
+        }
+        # Nota: Para ampliar o conjunto permitido de tipo_residencia (ex: adicionar 'kitnet'),
+        # não é simples alterar a CHECK constraint existente no SQLite. Estratégias possíveis:
+        # 1) Criar nova tabela, copiar dados e renomear (migração completa) - ainda não implementado.
+        # 2) Validar em nível de aplicação (já feito) para novos valores.
+        # 3) Se necessário futuramente, implementar rotina de recriação da tabela.
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                for table, columns in expected_columns.items():
+                    # Pegar colunas existentes
+                    cursor.execute(f"PRAGMA table_info({table})")
+                    existing = {row['name'] for row in cursor.fetchall()}
+                    for col_def in columns:
+                        col_name = col_def.split()[0]
+                        if col_name not in existing:
+                            try:
+                                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col_def}")
+                                logger.info(f"Coluna adicionada: {table}.{col_name}")
+                            except Exception as e:
+                                logger.warning(f"Falha ao adicionar coluna {table}.{col_name}: {e}")
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Migração leve não concluída: {e}")
+
+    def _ensure_additional_tables(self):
+        """Garante criação de tabelas novas adicionadas após primeira versão (ex: notificacoes_risco)."""
+        notificacoes_sql = """
+        CREATE TABLE IF NOT EXISTS notificacoes_risco (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            apolice_id INTEGER NOT NULL,
+            numero_apolice VARCHAR(50) NOT NULL,
+            segurado VARCHAR(100),
+            email TEXT,
+            telefone TEXT,
+            canal VARCHAR(20) NOT NULL,
+            mensagem TEXT NOT NULL,
+            score_risco_enviado DECIMAL(5,2),
+            nivel_risco_enviado VARCHAR(10),
+            enviado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            simulacao BOOLEAN DEFAULT 1,
+            status VARCHAR(20) DEFAULT 'sucesso',
+            erro TEXT
+        );
+        """
+        indexes_sql = [
+            "CREATE INDEX IF NOT EXISTS idx_notificacoes_apolice ON notificacoes_risco(apolice_id);",
+            "CREATE INDEX IF NOT EXISTS idx_notificacoes_data ON notificacoes_risco(enviado_em);"
+        ]
+        try:
+            with self.get_connection() as conn:
+                # Verificar existência
+                cur = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='notificacoes_risco'")
+                exists = cur.fetchone() is not None
+                if not exists:
+                    conn.execute(notificacoes_sql)
+                    for idx in indexes_sql:
+                        conn.execute(idx)
+                    conn.commit()
+                    logger.info("Tabela notificacoes_risco criada (ensure)")
+        except Exception as e:
+            logger.warning(f"Falha ao garantir tabela notificacoes_risco: {e}")
+
+    # Método público para ser chamado de outros módulos se necessário
+    def ensure_notifications_table(self):
+        try:
+            self._ensure_additional_tables()
+        except Exception as e:
+            logger.warning(f"Falha em ensure_notifications_table: {e}")
     
     @contextmanager
     def get_connection(self):
@@ -202,7 +290,7 @@ class Database:
             for table in tables:
                 try:
                     stats['tables'][table] = self.get_table_count(table)
-                except:
+                except Exception:
                     stats['tables'][table] = 0
             
             return stats

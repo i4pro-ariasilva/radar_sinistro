@@ -72,15 +72,18 @@ class CRUDOperations:
         if results:
             row = results[0]
             return Apolice(
-                id=row['id'],
                 numero_apolice=row['numero_apolice'],
+                segurado=row.get('segurado', 'N/A'),
                 cep=row['cep'],
-                latitude=row['latitude'],
-                longitude=row['longitude'],
                 tipo_residencia=row['tipo_residencia'],
                 valor_segurado=row['valor_segurado'],
                 data_contratacao=datetime.fromisoformat(row['data_contratacao']),
+                email=row.get('email'),
+                telefone=row.get('telefone'),
+                latitude=row['latitude'],
+                longitude=row['longitude'],
                 ativa=bool(row['ativa']),
+                id=row['id'],
                 created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
                 updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
             )
@@ -125,15 +128,18 @@ class CRUDOperations:
         
         for row in results:
             apolices.append(Apolice(
-                id=row['id'],
                 numero_apolice=row['numero_apolice'],
+                segurado=row.get('segurado', 'N/A'),
                 cep=row['cep'],
-                latitude=row['latitude'],
-                longitude=row['longitude'],
                 tipo_residencia=row['tipo_residencia'],
                 valor_segurado=row['valor_segurado'],
                 data_contratacao=datetime.fromisoformat(row['data_contratacao']),
-                ativa=bool(row['ativa'])
+                email=row.get('email'),
+                telefone=row.get('telefone'),
+                latitude=row['latitude'],
+                longitude=row['longitude'],
+                ativa=bool(row['ativa']),
+                id=row['id']
             ))
         
         return apolices
@@ -337,3 +343,105 @@ class CRUDOperations:
             ))
         
         return stats
+
+    # ==================== NOTIFICAÇÕES DE RISCO ====================
+
+    def insert_notificacao_risco(self,
+                                  apolice_id: int,
+                                  numero_apolice: str,
+                                  segurado: str = None,
+                                  email: str = None,
+                                  telefone: str = None,
+                                  canal: str = 'simulado',
+                                  mensagem: str = 'Mensagem de risco simulada',
+                                  score_risco: float = None,
+                                  nivel_risco: str = None,
+                                  simulacao: bool = True,
+                                  status: str = 'sucesso',
+                                  erro: str = None) -> int:
+        """Registra uma notificação (simulada ou real). Idempotente por (numero_apolice, canal, dia)."""
+        query = """
+        INSERT OR IGNORE INTO notificacoes_risco (
+            apolice_id, numero_apolice, segurado, email, telefone,
+            canal, mensagem, score_risco_enviado, nivel_risco_enviado,
+            simulacao, status, erro
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        params = (
+            apolice_id,
+            numero_apolice,
+            segurado,
+            email,
+            telefone,
+            canal,
+            mensagem,
+            score_risco,
+            nivel_risco,
+            1 if simulacao else 0,
+            status,
+            erro
+        )
+        try:
+            return self.db.execute_command(query, params)
+        except Exception as e:
+            msg = str(e).lower()
+            if 'no such table' in msg and 'notificacoes_risco' in msg:
+                # Tentar criar tabela on-the-fly
+                try:
+                    self.db._ensure_additional_tables()  # type: ignore (método interno)
+                    return self.db.execute_command(query, params)
+                except Exception as e2:
+                    logger.warning(f"Primeira tentativa de criar notificacoes_risco falhou: {e2}. Tentando criação explícita...")
+                    create_sql = """
+                    CREATE TABLE IF NOT EXISTS notificacoes_risco (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        apolice_id INTEGER NOT NULL,
+                        numero_apolice VARCHAR(50) NOT NULL,
+                        segurado VARCHAR(100),
+                        email TEXT,
+                        telefone TEXT,
+                        canal VARCHAR(20) NOT NULL,
+                        mensagem TEXT NOT NULL,
+                        score_risco_enviado DECIMAL(5,2),
+                        nivel_risco_enviado VARCHAR(10),
+                        enviado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        simulacao BOOLEAN DEFAULT 1,
+                        status VARCHAR(20) DEFAULT 'sucesso',
+                        erro TEXT
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_notificacoes_apolice ON notificacoes_risco(apolice_id);
+                    CREATE INDEX IF NOT EXISTS idx_notificacoes_data ON notificacoes_risco(enviado_em);
+                    """
+                    try:
+                        self.db.execute_command(create_sql)
+                        return self.db.execute_command(query, params)
+                    except Exception as e3:
+                        logger.error(f"Falha na criação explícita da tabela notificacoes_risco: {e3}")
+                        raise
+            logger.error(f"Erro ao registrar notificação: {e}")
+            raise
+
+    def get_notificacoes_por_apolices(self, numeros_apolice: List[str]) -> dict:
+        """Retorna últimas notificações (por dia) para um conjunto de apólices."""
+        if not numeros_apolice:
+            return {}
+        placeholders = ','.join(['?'] * len(numeros_apolice))
+        query = f"""
+        SELECT numero_apolice, MAX(enviado_em) as ultimo_envio,
+               COUNT(*) as total_envios_dia,
+               MAX(status) as status
+        FROM notificacoes_risco
+        WHERE numero_apolice IN ({placeholders})
+          AND date(enviado_em) = date('now')
+        GROUP BY numero_apolice
+        """
+        try:
+            rows = self.db.execute_query(query, tuple(numeros_apolice))
+            return {row['numero_apolice']: {
+                'ultimo_envio': row['ultimo_envio'],
+                'total_envios_dia': row['total_envios_dia'],
+                'status': row['status']
+            } for row in rows}
+        except Exception as e:
+            logger.error(f"Erro ao buscar notificações: {e}")
+            return {}

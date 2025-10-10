@@ -140,11 +140,12 @@ def save_policy_to_database(policy_data, risk_data):
         crud = CRUDOperations(db)
         
         # Criar objeto Apolice com estrutura correta
+        tipo_normalizado = policy_data['tipo_residencia'].lower()
         apolice = Apolice(
             numero_apolice=policy_data['numero_apolice'],
             segurado=policy_data.get('segurado', 'N/A'),
             cep=policy_data['cep'],
-            tipo_residencia=policy_data['tipo_residencia'].lower(),  # Converter para minúscula
+            tipo_residencia=tipo_normalizado,  # valor normalizado compatível com Enum
             valor_segurado=policy_data['valor_segurado'],
             data_contratacao=datetime.fromisoformat(policy_data['data_inicio']),
             email=policy_data.get('email', ''),
@@ -165,9 +166,21 @@ def save_policy_to_database(policy_data, risk_data):
         
         return policy_id
         
+    except ValueError as ve:
+        # Erro de validação do modelo (não devemos inserir fallback)
+        st.error(f"❌ Erro de validação: {ve}")
+        return None
     except Exception as e:
+        # Apenas erros estruturais (ex: schema incompleto) caem no fallback
         st.warning(f"Sistema de banco avançado indisponível: {e}")
-        # Fallback: salvar em SQLite simples
+        # Fallback: salvar em SQLite simples (com validação mínima extra)
+        try:
+            if float(policy_data.get('valor_segurado', 0)) <= 0:
+                st.error("❌ Valor segurado inválido (<= 0). Ajuste e tente novamente.")
+                return None
+        except Exception:
+            st.error("❌ Valor segurado não pôde ser interpretado.")
+            return None
         return save_policy_simple(policy_data, risk_data)
 
 def save_policy_simple(policy_data, risk_data):

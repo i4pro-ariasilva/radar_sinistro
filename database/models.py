@@ -12,6 +12,7 @@ class TipoResidencia(Enum):
     CASA = "casa"
     APARTAMENTO = "apartamento"
     SOBRADO = "sobrado"
+    KITNET = "kitnet"
 
 
 class NivelRisco(Enum):

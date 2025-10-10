@@ -164,6 +164,7 @@ def main():
                 "🏠 Dashboard Principal",
                 "🔮 Análise de Risco",
                 "📋 Apólices em Risco",
+                "🚨 Gerenciamento de Alertas",
                 "➕ Gerenciar Apólices",
                 "📊 Estatísticas",
                 "🌡️ Monitoramento Climático",
@@ -194,6 +195,8 @@ def main():
         show_risk_analysis()
     elif page == "📋 Apólices em Risco":
         show_policies_at_risk()
+    elif page == "🚨 Gerenciamento de Alertas":
+        show_alert_management()
     elif page == "➕ Gerenciar Apólices":
         show_manage_policies()
     elif page == "📊 Estatísticas":
@@ -699,9 +702,10 @@ def show_policies_at_risk():
 
     # Persistir dados das apólices em session_state para evitar mudanças a cada rerun
     # Adicionar notified_today_filter aos filtros persistidos
-    if 'policies_data_cache' not in st.session_state or st.session_state.get('last_policy_filters', None) != (search_policy, risk_filter, policy_type, value_range, notified_today_filter):
+    current_policy_filters = (search_policy, risk_filter, policy_type, value_range, notified_today_filter)
+    if 'policies_data_cache' not in st.session_state or st.session_state.get('last_policy_filters', None) != current_policy_filters:
         st.session_state.policies_data_cache = get_real_policies_data(search_policy, risk_filter, policy_type, value_range)
-        st.session_state.last_policy_filters = (search_policy, risk_filter, policy_type, value_range, notified_today_filter)
+        st.session_state.last_policy_filters = current_policy_filters
     policies_data = st.session_state.policies_data_cache
     
     # Métricas resumidas
@@ -785,217 +789,7 @@ def show_policies_at_risk():
         st.dataframe(styled_df, use_container_width=True, height=400)
 
 
-        # Seleção compacta com multiselect, sem alterar a tabela
-        st.markdown("---")
-        st.markdown("### ✉️ Enviar Mensagem de Risco para Segurados")
-        # Garantir inicialização de selected_policies
-        if 'selected_policies' not in st.session_state:
-            st.session_state.selected_policies = []
-        # Campo para editar mensagem manual
-        mensagem_padrao_manual = (
-            "Olá, {segurado}!\n"
-            "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) para o imóvel {tipo_residencia} no endereço {cep}.\n"
-            "Recomendamos atenção especial e, se desejar, entre em contato com seu corretor para orientações.\n"
-            "Equipe Radar de Sinistro."
-        )
-        mensagem_manual = st.text_area(
-            "Mensagem a ser enviada:",
-            value=st.session_state.get("mensagem_manual", mensagem_padrao_manual),
-            key="mensagem_manual",
-            height=120
-        )
-        st.caption("<small>Variáveis disponíveis: <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code></small>", unsafe_allow_html=True)
 
-        # Pré-visualização da mensagem para a primeira apólice selecionada
-        if st.session_state.selected_policies:
-            pnum_preview = st.session_state.selected_policies[0]
-            row_preview = df[df['policy_number']==pnum_preview].iloc[0]
-            msg_preview = mensagem_manual.format(
-                segurado=row_preview.get('insured_name', 'Segurado'),
-                numero_apolice=pnum_preview,
-                nivel_risco=row_preview.get('risk_level', ''),
-                score_risco=row_preview.get('risk_score', ''),
-                tipo_residencia=row_preview.get('property_type', ''),
-                cep=row_preview.get('cep', '')
-            )
-            st.markdown("**Pré-visualização da mensagem:**")
-            st.code(msg_preview, language="text")
-        # Mostrar resultado persistido de envio anterior, se existir
-        if 'last_notification_result' in st.session_state:
-            res = st.session_state.last_notification_result
-            if res.get('enviados'):
-                st.success(f"Último envio: {len(res['enviados'])} notificação(ões) registradas → {', '.join(res['enviados'])}")
-            if res.get('ja_notificados'):
-                st.info(f"Já notificadas anteriormente hoje: {', '.join(res['ja_notificados'])}")
-            if res.get('erros'):
-                with st.expander("Erros no último envio"):
-                    for pnum, err in res['erros']:
-                        st.write(f"- {pnum}: {err}")
-        selectable_policies = df['policy_number'].tolist()
-        # Inicializar armazenamento se necessário
-        if 'selected_policies' not in st.session_state:
-            st.session_state.selected_policies = []
-
-        # Construir mapa para evitar múltiplos filtros por item (performance e estabilidade)
-        policy_map = df.set_index('policy_number')[['risk_score','property_type','cep']].to_dict('index')
-
-        def _format_policy(pnum: str) -> str:
-            data = policy_map.get(pnum, {})
-            risk_score = data.get('risk_score', 0)
-            emoji = get_risk_level_emoji(risk_score)
-            ptype = str(data.get('property_type', '')).title()
-            cep_val = data.get('cep', '')
-            return f"{pnum} | {emoji} | Score: {risk_score:.1f} | {ptype} | CEP: {cep_val}"
-
-        # Normalizar seleção removendo itens que não existem mais
-        existing_selection = [p for p in st.session_state.selected_policies if p in selectable_policies]
-        if existing_selection != st.session_state.selected_policies:
-            st.session_state.selected_policies = existing_selection
-
-        # Chaves internas para sincronização do widget
-        if 'multiselect_policies' not in st.session_state:
-            st.session_state.multiselect_policies = st.session_state.selected_policies.copy()
-
-        # Funções de ação
-        def _select_all():
-            st.session_state.selected_policies = selectable_policies.copy()
-            st.session_state.multiselect_policies = selectable_policies.copy()
-        def _clear_all():
-            st.session_state.selected_policies = []
-            st.session_state.multiselect_policies = []
-
-        # Ações rápidas
-        ac1, ac2, ac3 = st.columns([1,1,3])
-        with ac1:
-            st.button(
-                "Selecionar Todas",
-                use_container_width=True,
-                disabled=len(st.session_state.selected_policies)==len(selectable_policies) and len(selectable_policies)>0,
-                on_click=_select_all
-            )
-        with ac2:
-            st.button(
-                "Limpar",
-                use_container_width=True,
-                disabled=len(st.session_state.selected_policies)==0,
-                on_click=_clear_all
-            )
-        # Terceira coluna será preenchida depois do multiselect (contador atualizado em tempo real)
-        with ac3:
-            st.markdown("&nbsp;")  # placeholder visual
-
-        # Placeholder informativo será determinado após obter valor atual
-        # (colocamos provisório aqui)
-        placeholder_txt = "Digite para filtrar apólices"
-
-        # Multiselect sem uso de default (estado via key)
-        multiselect_value = st.multiselect(
-            "Selecione as apólices para notificar:",
-            options=selectable_policies,
-            format_func=_format_policy,
-            key='multiselect_policies',
-            placeholder=placeholder_txt
-        )
-
-        # Atualizar seleção pelo valor atual do widget (já atualizado pelo Streamlit)
-        if set(multiselect_value) != set(st.session_state.selected_policies):
-            st.session_state.selected_policies = multiselect_value
-
-        # Recalcular contador com base no estado imediato multiselect_policies
-        total = len(selectable_policies)
-        sel_count = len(st.session_state.selected_policies)
-
-        # Renderizar contador agora (fora do layout inicial para refletir estado atual)
-        st.markdown(f"**Selecionadas:** {sel_count}/{total}")
-
-        # Mensagem quando todas selecionadas
-        if sel_count==total and total>0:
-            st.caption("✅ Todas as apólices selecionadas.")
-            # Atualizar placeholder retroativamente (não altera já renderizado, mas mantém lógica clara)
-            # (Streamlit não suporta atualizar placeholder após render sem rerun, aceitável)
-
-        send_disabled = len(st.session_state.selected_policies)==0
-        if st.button("🚨 Enviar mensagem de risco", use_container_width=True, disabled=send_disabled):
-            from database import get_database, CRUDOperations
-            db = get_database()
-            # Failsafe: garantir tabela de notificações antes de prosseguir
-            try:
-                db.ensure_notifications_table()
-            except Exception:
-                st.warning("🔧 Tentativa de criar tabela de notificações (ensure) falhou, seguirá com fallback interno.")
-            crud_local = CRUDOperations(db)
-
-            enviados = []
-            ja_notificados = []
-            erros = []
-            for pnum in st.session_state.selected_policies:
-                # Buscar linha da policy
-                row = df[df['policy_number']==pnum].iloc[0]
-                # Evitar duplicar notificação no mesmo dia
-                if pnum in notificacoes_map:  # já mapeado em cache de hoje
-                    ja_notificados.append(pnum)
-                    continue
-                try:
-                    # Checagem extra idempotente direta no banco (caso outra sessão tenha enviado agora)
-                    with db.get_connection() as conn:
-                        cur = conn.execute(
-                            "SELECT 1 FROM notificacoes_risco WHERE numero_apolice=? AND canal=? AND date(enviado_em)=date('now') LIMIT 1",
-                            (pnum, 'simulado')
-                        )
-                        if cur.fetchone():
-                            ja_notificados.append(pnum)
-                            continue
-                    # Placeholder para lookup futuro real de contato (email/telefone poderiam vir do banco se existirem)
-                    email = row.get('email') if 'email' in row else None
-                    telefone = row.get('telefone') if 'telefone' in row else None
-                    # Mensagem personalizada pelo usuário
-                    mensagem = mensagem_manual.format(
-                        segurado=row.get('insured_name', 'Segurado'),
-                        numero_apolice=pnum,
-                        nivel_risco=row.get('risk_level', ''),
-                        score_risco=row.get('risk_score', ''),
-                        tipo_residencia=row.get('property_type', ''),
-                        cep=row.get('cep', '')
-                    )
-                    crud_local.insert_notificacao_risco(
-                        apolice_id=0,  # Sem relacionamento direto carregado aqui
-                        numero_apolice=pnum,
-                        segurado=row.get('insured_name'),
-                        email=email,
-                        telefone=telefone,
-                        canal='simulado',
-                        mensagem=mensagem,
-                        score_risco=row['risk_score'],
-                        nivel_risco=row['risk_level'],
-                        simulacao=True,
-                        status='sucesso'
-                    )
-                    enviados.append(pnum)
-                except Exception as e:
-                    erros.append((pnum, str(e)))
-
-            # Feedback
-            # Guardar resultado na sessão para persistir após rerun opcional
-            st.session_state.last_notification_result = {
-                'enviados': enviados,
-                'ja_notificados': ja_notificados,
-                'erros': erros
-            }
-            # Mostrar mensagens agora
-            if enviados:
-                st.success(f"✅ Notificação simulada registrada para: {', '.join(enviados)}")
-            if ja_notificados:
-                st.info(f"ℹ️ Já haviam notificações hoje para: {', '.join(ja_notificados)} (ignoradas)")
-            if erros:
-                with st.expander("Erros em algumas apólices"):
-                    for pnum, err in erros:
-                        st.write(f"- {pnum}: {err}")
-            # Atualizar tabela apenas se houve algum envio e nenhum erro crítico (por simplicidade: sempre rerun se não houve erros)
-            if erros:
-                # Não faz rerun para não perder feedback; usuário pode enviar novamente após corrigir
-                pass
-            else:
-                st.rerun()
 
         # Detalhes da apólice selecionada
         st.markdown("---")
@@ -1095,13 +889,13 @@ def generate_mock_policies_data(search_filter=None, risk_filter="Todos", type_fi
     # Filtro de risco
     if risk_filter != "Todos":
         if "Alto" in risk_filter:
-            filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75]
+            filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75.0]
         elif "Médio-Alto" in risk_filter:
-            filtered_policies = [p for p in filtered_policies if 50 <= p['risk_score'] < 75]
+            filtered_policies = [p for p in filtered_policies if 50.0 <= p['risk_score'] < 75.0]
         elif "Médio-Baixo" in risk_filter:
-            filtered_policies = [p for p in filtered_policies if 25 <= p['risk_score'] < 50]
+            filtered_policies = [p for p in filtered_policies if 25.0 <= p['risk_score'] < 50.0]
         elif "Baixo" in risk_filter:
-            filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25]
+            filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25.0]
     
     # Filtro de tipo
     if type_filter != "Todos":
@@ -1192,16 +986,16 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
             filtered_policies = [p for p in filtered_policies 
                                if search_term in p['policy_number'].upper()]
         
-        # Filtro de risco
+        # Filtro de risco (igualdade exata com o valor do selectbox)
         if risk_filter != "Todos":
-            if "Alto" in risk_filter:
-                filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75]
-            elif "Médio-Alto" in risk_filter:
-                filtered_policies = [p for p in filtered_policies if 50 <= p['risk_score'] < 75]
-            elif "Médio-Baixo" in risk_filter:
-                filtered_policies = [p for p in filtered_policies if 25 <= p['risk_score'] < 50]
-            elif "Baixo" in risk_filter:
-                filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25]
+            if risk_filter == "Alto (75-100)":
+                filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75.0]
+            elif risk_filter == "Médio-Alto (50-75)":
+                filtered_policies = [p for p in filtered_policies if 50.0 <= p['risk_score'] < 75.0]
+            elif risk_filter == "Médio-Baixo (25-50)":
+                filtered_policies = [p for p in filtered_policies if 25.0 <= p['risk_score'] < 50.0]
+            elif risk_filter == "Baixo (0-25)":
+                filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25.0]
         
         # Filtro de tipo
         if type_filter != "Todos":
@@ -1379,31 +1173,52 @@ def show_statistics():
             'Classificação': risco
         })
     
-    df = pd.DataFrame(recent_data)
-    st.dataframe(df, use_container_width=True)
-    
-    # Status dos componentes
-    st.markdown("---")
-    st.subheader("🔧 Status dos Componentes")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("#### 🧠 Machine Learning")
+        df = pd.DataFrame(policies_data)
+        if len(df) > 0:
+            st.caption('Scores carregados: ' + ', '.join([str(s) for s in df['risk_score'].tolist()]))
+        # Forçar conversão para float
+        df['risk_score'] = df['risk_score'].astype(float)
+        df['risk_level'] = df['risk_score'].apply(get_risk_level_emoji)
+
+        # Aplicar filtro de risco PRIMEIRO e criar df_filtrado
+        df_filtrado = df.copy()
+        if risk_filter != "Todos":
+            if "Alto" in risk_filter:
+                df_filtrado = df_filtrado[df_filtrado['risk_score'] >= 75.0]
+            elif "Médio-Alto" in risk_filter:
+                df_filtrado = df_filtrado[(df_filtrado['risk_score'] >= 50.0) & (df_filtrado['risk_score'] < 75.0)]
+            elif "Médio-Baixo" in risk_filter:
+                df_filtrado = df_filtrado[(df_filtrado['risk_score'] >= 25.0) & (df_filtrado['risk_score'] < 50.0)]
+            elif "Baixo" in risk_filter:
+                df_filtrado = df_filtrado[df_filtrado['risk_score'] < 25.0]
+
+        # Exibir DataFrame filtrado para depuração
+        if len(df_filtrado) > 0:
+            st.caption('Scores filtrados: ' + ', '.join([str(s) for s in df_filtrado['risk_score'].tolist()]))
+            st.dataframe(df_filtrado[['policy_number', 'risk_score']])
+
+        # Obter status de notificações
         try:
-            from web_ml_integration import get_ml_integration
-            ml = get_ml_integration()
-            status = ml.get_system_status()
-            
-            if status.get('overall'):
-                st.success("✅ Sistema ML Operacional")
-                st.write("• Modelo carregado")
-                st.write("• Predições em tempo real")
-            else:
-                st.warning("⚠️ Modo Simulação")
-                st.write("• Usando predições simuladas")
-        except:
-            st.error("❌ Erro ao verificar ML")
+            from database import get_database, CRUDOperations
+            crud_tmp = CRUDOperations(get_database())
+            notificacoes_map = crud_tmp.get_notificacoes_por_apolices(df_filtrado['policy_number'].tolist())
+        except Exception:
+            notificacoes_map = {}
+
+        # Aplicar filtro de notificação
+        df_filtrado['notified_today'] = df_filtrado['policy_number'].apply(lambda p: '✅' if p in notificacoes_map else '—')
+
+        if notified_filter == "Já Notificadas Hoje":
+            df_filtrado = df_filtrado[df_filtrado['notified_today'] == '✅']
+        elif notified_filter == "Não Notificadas Hoje":
+            df_filtrado = df_filtrado[df_filtrado['notified_today'] == '—']
+        elif notified_filter == "Nunca Notificadas":
+            # Para este filtro, precisaríamos de uma consulta mais complexa no banco
+            pass
+
+        # Use df_filtrado para exibição e seleção a partir daqui
+    df = df_filtrado
+    # As linhas abaixo estavam mal indentadas e causavam erro. Se necessário, reintroduza dentro de um bloco condicional adequado.
     
     with col2:
         st.markdown("#### 🌦️ API Climática")
@@ -1914,6 +1729,332 @@ def show_settings():
     with col3:
         st.metric("Banco de Dados", "SQLite")
         st.metric("Ambiente", "Desenvolvimento")
+
+def show_alert_management():
+    """Módulo de Gerenciamento de Alertas - Busca e envio de notificações para apólices"""
+    
+    st.header("🚨 Gerenciamento de Alertas")
+    st.markdown("Sistema centralizado para busca de apólices e envio de notificações de risco")
+    
+    # Seção de busca de apólices
+    st.markdown("---")
+    st.subheader("🔍 Busca de Apólices")
+    
+    col1, col2, col3 = st.columns([2, 1, 2])
+
+    with col1:
+        search_policy = st.text_input(
+            "Buscar Apólice", 
+            placeholder="Digite o número da apólice (ex: POL-2025-001234) ou deixe vazio para listar todas",
+            help="Busque uma apólice específica pelo número ou deixe vazio para ver todas"
+        )
+
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
+        search_button = st.button("🔍 Buscar", use_container_width=True)
+
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
+    
+    # Filtros avançados
+    st.markdown("### 🎛️ Filtros de Busca")
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        risk_filter = st.selectbox(
+            "Nível de Risco",
+            ["Todos", "Alto (75-100)", "Médio-Alto (50-75)", "Médio-Baixo (25-50)", "Baixo (0-25)"]
+        )
+
+    with col2:
+        property_type = st.selectbox(
+            "Tipo de Imóvel",
+            ["Todos", "Casa", "Apartamento", "Sobrado", "Cobertura", "Kitnet"]
+        )
+
+    with col3:
+        value_range = st.selectbox(
+            "Faixa de Valor",
+            ["Todos", "Até R$ 100k", "R$ 100k - 300k", "R$ 300k - 500k", "R$ 500k - 1M", "Acima R$ 1M"]
+        )
+
+    with col4:
+        notified_filter = st.selectbox(
+            "Status de Notificação",
+            ["Todas", "Já Notificadas Hoje", "Não Notificadas Hoje", "Nunca Notificadas"]
+        )
+    
+    # Buscar apólices baseado nos filtros
+    current_filters = (search_policy, risk_filter, property_type, value_range, notified_filter)
+    if 'alert_policies_cache' not in st.session_state or st.session_state.get('last_alert_filters', None) != current_filters:
+        policies_data = get_real_policies_data(search_policy, risk_filter, property_type, value_range)
+        st.session_state.alert_policies_cache = policies_data
+        st.session_state.last_alert_filters = current_filters
+    
+    policies_data = st.session_state.alert_policies_cache
+    
+    # Resumo das apólices encontradas
+    st.markdown("---")
+    st.subheader("📊 Resumo da Busca")
+    
+    if policies_data:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        high_risk = len([p for p in policies_data if p['risk_score'] >= 75])
+        medium_risk = len([p for p in policies_data if 50 <= p['risk_score'] < 75])
+        low_risk = len([p for p in policies_data if p['risk_score'] < 50])
+        total_found = len(policies_data)
+        
+        with col1:
+            st.metric("📋 Total Encontradas", total_found)
+        
+        with col2:
+            st.metric("🔴 Alto Risco", high_risk, f"{high_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        with col3:
+            st.metric("🟡 Médio Risco", medium_risk, f"{medium_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        with col4:
+            st.metric("🟢 Baixo Risco", low_risk, f"{low_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        # Lista compacta das apólices encontradas (sem tabela completa)
+        st.markdown("---")
+        st.subheader("📋 Apólices Encontradas")
+        
+        # Criar DataFrame básico
+        df = pd.DataFrame(policies_data)
+        # Forçar conversão para float
+        df['risk_score'] = df['risk_score'].astype(float)
+        df['risk_level'] = df['risk_score'].apply(get_risk_level_emoji)
+
+        # Obter status de notificações
+        try:
+            from database import get_database, CRUDOperations
+            crud_tmp = CRUDOperations(get_database())
+            notificacoes_map = crud_tmp.get_notificacoes_por_apolices(df['policy_number'].tolist())
+        except Exception:
+            notificacoes_map = {}
+
+        # Aplicar filtro de notificação
+        df['notified_today'] = df['policy_number'].apply(lambda p: '✅' if p in notificacoes_map else '—')
+
+        if notified_filter == "Já Notificadas Hoje":
+            df = df[df['notified_today'] == '✅']
+        elif notified_filter == "Não Notificadas Hoje":
+            df = df[df['notified_today'] == '—']
+        elif notified_filter == "Nunca Notificadas":
+            # Para este filtro, precisaríamos de uma consulta mais complexa no banco
+            pass
+        
+        # Mostrar lista resumida
+        if len(df) > 0:
+            # Lista em formato compacto
+            for idx, row in df.head(10).iterrows():  # Mostrar apenas os primeiros 10
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                
+                with col1:
+                    st.write(f"**{row['policy_number']}** - {row.get('insured_name', 'N/A')}")
+                
+                with col2:
+                    st.write(f"{row['risk_level']} (Score: {row['risk_score']:.1f})")
+                
+                with col3:
+                    st.write(f"{row['property_type'].title()} - {row['cep']}")
+                
+                with col4:
+                    st.write(f"Notif.: {row['notified_today']}")
+            
+            if len(df) > 10:
+                st.info(f"Mostrando primeiras 10 de {len(df)} apólices encontradas. Use os filtros para refinar a busca.")
+        
+        # Seção de envio de notificações
+        st.markdown("---")
+        st.subheader("✉️ Envio de Notificações")
+        
+        # Seleção de apólices para notificar
+        if 'selected_alert_policies' not in st.session_state:
+            st.session_state.selected_alert_policies = []
+        
+        # Opções de seleção rápida
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Selecionar Todas", use_container_width=True):
+                st.session_state.selected_alert_policies = df['policy_number'].tolist()
+        
+        with col2:
+            if st.button("Limpar Seleção", use_container_width=True):
+                st.session_state.selected_alert_policies = []
+        
+        # Multiselect para seleção manual
+        selectable_policies = df['policy_number'].tolist()
+        
+        def format_policy_option(policy_num):
+            row = df[df['policy_number'] == policy_num].iloc[0]
+            return f"{policy_num} | {row['risk_level']} | Score: {row['risk_score']:.1f} | {row['property_type'].title()}"
+        
+        selected_policies = st.multiselect(
+            "Selecione as apólices para notificar:",
+            options=selectable_policies,
+            default=st.session_state.selected_alert_policies,
+            format_func=format_policy_option,
+            help="Selecione uma ou mais apólices para enviar notificações"
+        )
+        
+        st.session_state.selected_alert_policies = selected_policies
+        
+    # Configuração da mensagem
+    st.markdown("#### 📝 Configuração da Mensagem")
+    st.markdown("""
+<small>Você pode personalizar a mensagem enviada ao segurado. Variáveis disponíveis:<br>
+<code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code>
+</small>
+""", unsafe_allow_html=True)
+
+    mensagem_padrao = (
+        "Olá, {segurado}!\n"
+        "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) "
+        "para o imóvel {tipo_residencia} no endereço {cep}.\n"
+        "Recomendamos atenção especial e, se desejar, entre em contato conosco para orientações.\n\n"
+        "Atenciosamente,\n"
+        "Equipe Radar de Sinistro."
+    )
+
+    mensagem_personalizada = st.text_area(
+        "Mensagem a ser enviada:",
+        value=mensagem_padrao,
+        height=120,
+        help="Use as variáveis: {segurado}, {numero_apolice}, {nivel_risco}, {score_risco}, {tipo_residencia}, {cep}"
+    )
+
+    # Pré-visualização da mensagem
+    if selected_policies:
+        st.markdown("#### 👁️ Pré-visualização")
+        preview_policy = selected_policies[0]
+        preview_row = df[df['policy_number'] == preview_policy].iloc[0]
+
+        preview_message = mensagem_personalizada.format(
+            segurado=preview_row.get('insured_name', 'Segurado'),
+            numero_apolice=preview_policy,
+            nivel_risco=preview_row['risk_level'],
+            score_risco=preview_row['risk_score'],
+            tipo_residencia=preview_row['property_type'],
+            cep=preview_row['cep']
+        )
+
+        st.code(preview_message, language="text")
+        st.caption(f"Pré-visualização baseada na apólice: {preview_policy}")
+        
+        # Botão de envio
+        st.markdown("#### 🚀 Enviar Notificações")
+        
+        if selected_policies:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.info(f"📊 {len(selected_policies)} apólice(s) selecionada(s) para notificação")
+            
+            with col2:
+                if st.button("🚨 Enviar Alertas", type="primary", use_container_width=True):
+                    send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map)
+        else:
+            st.warning("⚠️ Selecione pelo menos uma apólice para enviar notificações.")
+    
+    else:
+        st.info("📭 Nenhuma apólice encontrada com os critérios de busca especificados.")
+        st.markdown("**Sugestões:**")
+        st.markdown("- Verifique se o número da apólice está correto")
+        st.markdown("- Tente ajustar os filtros de busca")
+        st.markdown("- Use 'Gerenciar Apólices' para adicionar novas apólices")
+
+def send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map):
+    """Enviar notificações para as apólices selecionadas"""
+    
+    from database import get_database, CRUDOperations
+    
+    try:
+        db = get_database()
+        db.ensure_notifications_table()
+        crud = CRUDOperations(db)
+        
+        enviados = []
+        ja_notificados = []
+        erros = []
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for i, policy_num in enumerate(selected_policies):
+            status_text.text(f"Processando: {policy_num}")
+            progress_bar.progress((i + 1) / len(selected_policies))
+            
+            # Verificar se já foi notificada hoje
+            if policy_num in notificacoes_map:
+                ja_notificados.append(policy_num)
+                continue
+            
+            try:
+                row = df[df['policy_number'] == policy_num].iloc[0]
+                
+                # Personalizar mensagem
+                mensagem = mensagem_personalizada.format(
+                    segurado=row.get('insured_name', 'Segurado'),
+                    numero_apolice=policy_num,
+                    nivel_risco=row['risk_level'],
+                    score_risco=row['risk_score'],
+                    tipo_residencia=row['property_type'],
+                    cep=row['cep']
+                )
+                
+                # Registrar notificação no banco
+                crud.insert_notificacao_risco(
+                    apolice_id=0,
+                    numero_apolice=policy_num,
+                    segurado=row.get('insured_name'),
+                    email=row.get('email'),
+                    telefone=row.get('telefone'),
+                    canal='sistema_alertas',
+                    mensagem=mensagem,
+                    score_risco=row['risk_score'],
+                    nivel_risco=row['risk_level'],
+                    simulacao=True,
+                    status='sucesso'
+                )
+                
+                enviados.append(policy_num)
+                
+            except Exception as e:
+                erros.append((policy_num, str(e)))
+        
+        # Limpar barra de progresso
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Mostrar resultados
+        if enviados:
+            st.success(f"✅ {len(enviados)} notificação(ões) enviada(s) com sucesso!")
+            with st.expander("Apólices notificadas"):
+                for policy in enviados:
+                    st.write(f"• {policy}")
+        
+        if ja_notificados:
+            st.info(f"ℹ️ {len(ja_notificados)} apólice(s) já havia(m) sido notificada(s) hoje:")
+            with st.expander("Apólices já notificadas"):
+                for policy in ja_notificados:
+                    st.write(f"• {policy}")
+        
+        if erros:
+            st.error(f"❌ {len(erros)} erro(s) no envio:")
+            with st.expander("Erros detalhados"):
+                for policy, erro in erros:
+                    st.write(f"• {policy}: {erro}")
+        
+        # Limpar seleção após envio
+        if enviados or ja_notificados:
+            st.session_state.selected_alert_policies = []
+    
+    except Exception as e:
+        st.error(f"Erro geral no envio de notificações: {str(e)}")
 
 if __name__ == "__main__":
     main()

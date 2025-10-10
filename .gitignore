@@ -39,12 +39,12 @@ venv.bak/
 *.swo
 *~
 
-# Banco de dados
-*.db
+# Banco de dados (mantendo radar_sinistro.db no repo)
 *.sqlite
 *.sqlite3
 radar_climatico.db
 weather_cache.db
+!database/radar_sinistro.db
 
 # Dados temporários e cache
 data/processed/
@@ -74,11 +74,9 @@ Thumbs.db
 *.json
 *.parquet
 
-# Modelos treinados (COMENTADO - mantendo no repo por enquanto)
-# models/
-# *.pkl
-# *.joblib
-# *.h5
+# Modelos treinados (incluindo no repo)
+!models/*.pkl
+!models/*.joblib
 
 # Logs e arquivos temporários
 logs/
@@ -156,11 +154,12 @@ temp/
 *secret*
 *token*
 
-# Dados sensíveis (nunca commitar)
+# Dados de amostra (mantendo samples no repo)
 data/raw/*
 !data/raw/.gitkeep
+!data/sample/
 data/sample/*
-!data/sample/.gitkeep
+!data/sample/*.csv
 
 # Cache de dependências
 .cache/

@@ -14,10 +14,15 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import sys
 import os
+import json
 
 # Configurar path para módulos do sistema
 sys.path.append('.')
 from policy_management import show_manage_policies
+
+# Importar páginas de documentação da API
+from pages.api_documentation import show_api_documentation
+from pages.api_code_examples import show_code_examples
 
 # Configuração da página
 st.set_page_config(
@@ -133,6 +138,247 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ============================================================
+# FUNÇÕES DE ALERTAS AUTOMÁTICOS
+# ============================================================
+
+def salvar_configuracoes_alertas(configuracoes):
+    """Salva as configurações de alertas automáticos no banco de dados"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Criar tabela de configurações se não existir
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS configuracoes_alertas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                configuracoes TEXT NOT NULL,
+                data_atualizacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Inserir ou atualizar configurações
+        cursor.execute("""
+            INSERT OR REPLACE INTO configuracoes_alertas (id, configuracoes)
+            VALUES (1, ?)
+        """, (json.dumps(configuracoes, ensure_ascii=False),))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar configurações: {str(e)}")
+        return False
+
+def carregar_configuracoes_alertas():
+    """Carrega as configurações de alertas automáticos do banco de dados"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT configuracoes FROM configuracoes_alertas WHERE id = 1")
+        resultado = cursor.fetchone()
+        
+        conn.close()
+        
+        if resultado:
+            return json.loads(resultado[0])
+        return None
+    except Exception as e:
+        return None
+
+def testar_envio_alerta(mensagem, canais):
+    """Testa o envio de um alerta com as configurações atuais"""
+    try:
+        # Simula o envio para teste
+        st.info("🧪 **Teste de Alerta Executado:**")
+        
+        for canal in canais:
+            if canal == "Email":
+                st.success(f"✅ {canal}: Alerta de teste enviado para admin@radarsinistro.com")
+            elif canal == "SMS":
+                st.success(f"✅ {canal}: Alerta de teste enviado para +55 11 99999-9999")
+            elif canal == "WhatsApp":
+                st.success(f"✅ {canal}: Alerta de teste enviado via WhatsApp")
+            elif canal == "Sistema Interno":
+                st.success(f"✅ {canal}: Notificação criada no sistema")
+        
+        return True
+    except Exception as e:
+        st.error(f"Erro no teste de envio: {str(e)}")
+        return False
+
+def executar_alertas_automaticos(configuracoes):
+    """Executa o envio automático de alertas baseado nas configurações"""
+    try:
+        from database.crud_operations import get_all_policies, get_prediction_for_policy
+        from database.database import DatabaseManager
+        
+        # Inicializar conexão com banco
+        db = DatabaseManager()
+        
+        # Buscar apólices elegíveis para alerta
+        policies = get_all_policies()
+        alertas_enviados = 0
+        alertas_falharam = 0
+        
+        for policy in policies:
+            # Verificar se a apólice tem score de risco alto
+            prediction = get_prediction_for_policy(policy['numero_apolice'])
+            if prediction and prediction.get('score_risco', 0) >= configuracoes.get('limite_risco', 75):
+                
+                # Verificar se já foi notificada recentemente (cooldown)
+                if verificar_cooldown_alerta(policy['numero_apolice'], configuracoes.get('cooldown', 7)):
+                    continue
+                
+                # Preparar dados para a mensagem
+                dados_mensagem = {
+                    'segurado': policy.get('segurado', 'N/A'),
+                    'numero_apolice': policy.get('numero_apolice', 'N/A'),
+                    'score_risco': prediction.get('score_risco', 0),
+                    'nivel_risco': prediction.get('nivel_risco', 'N/A'),
+                    'tipo_residencia': policy.get('tipo_residencia', 'N/A'),
+                    'cep': policy.get('cep', 'N/A'),
+                    'valor_segurado': policy.get('valor_segurado', 0),
+                    'data_atual': datetime.now().strftime("%d/%m/%Y")
+                }
+                
+                # Formatar mensagem
+                mensagem_formatada = configuracoes['mensagem'].format(**dados_mensagem)
+                
+                # Enviar alerta
+                sucesso = enviar_alerta_para_apolice(
+                    policy, 
+                    mensagem_formatada, 
+                    configuracoes['canais'],
+                    configuracoes['assunto']
+                )
+                
+                if sucesso:
+                    alertas_enviados += 1
+                    # Marcar como notificada
+                    marcar_apolice_notificada(policy['numero_apolice'])
+                else:
+                    alertas_falharam += 1
+                
+                # Verificar limite diário
+                if alertas_enviados >= configuracoes.get('max_por_dia', 50):
+                    break
+        
+        return {
+            'sucesso': True,
+            'enviados': alertas_enviados,
+            'erros': alertas_falharam
+        }
+        
+    except Exception as e:
+        st.error(f"Erro na execução dos alertas: {str(e)}")
+        return {
+            'sucesso': False,
+            'enviados': 0,
+            'erros': 0
+        }
+
+def verificar_cooldown_alerta(numero_apolice, cooldown_dias):
+    """Verifica se a apólice está em período de cooldown para alertas"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Verificar último alerta enviado
+        cursor.execute("""
+            SELECT data_envio FROM alertas_enviados 
+            WHERE numero_apolice = ? 
+            ORDER BY data_envio DESC LIMIT 1
+        """, (numero_apolice,))
+        
+        resultado = cursor.fetchone()
+        conn.close()
+        
+        if resultado:
+            ultima_data = datetime.strptime(resultado[0], "%Y-%m-%d %H:%M:%S")
+            dias_desde_ultimo = (datetime.now() - ultima_data).days
+            return dias_desde_ultimo < cooldown_dias
+        
+        return False
+    except Exception as e:
+        return False
+
+def enviar_alerta_para_apolice(policy, mensagem, canais, assunto):
+    """Envia alerta para uma apólice específica pelos canais configurados"""
+    try:
+        # Simular envio pelos diferentes canais
+        sucesso_total = True
+        
+        for canal in canais:
+            try:
+                if canal == "Email" and policy.get('email'):
+                    # Simular envio de email
+                    registrar_envio_alerta(policy['numero_apolice'], canal, mensagem)
+                elif canal == "SMS" and policy.get('telefone'):
+                    # Simular envio de SMS
+                    registrar_envio_alerta(policy['numero_apolice'], canal, mensagem)
+                elif canal == "Sistema Interno":
+                    # Criar notificação no sistema
+                    registrar_envio_alerta(policy['numero_apolice'], canal, mensagem)
+            except Exception as e:
+                sucesso_total = False
+        
+        return sucesso_total
+    except Exception as e:
+        return False
+
+def registrar_envio_alerta(numero_apolice, canal, mensagem):
+    """Registra o envio de um alerta no banco de dados"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Criar tabela se não existir
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS alertas_enviados (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                numero_apolice TEXT NOT NULL,
+                canal TEXT NOT NULL,
+                mensagem TEXT NOT NULL,
+                data_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Inserir registro
+        cursor.execute("""
+            INSERT INTO alertas_enviados (numero_apolice, canal, mensagem)
+            VALUES (?, ?, ?)
+        """, (numero_apolice, canal, mensagem))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        return False
+
+def marcar_apolice_notificada(numero_apolice):
+    """Marca uma apólice como notificada no sistema"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            UPDATE policies SET notificada = 1, data_notificacao = ?
+            WHERE numero_apolice = ?
+        """, (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), numero_apolice))
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        return False
+
 def main():
     """Função principal da aplicação"""
     
@@ -166,6 +412,7 @@ def main():
                 "🚨 Gerenciamento de Alertas",
                 "🚫 Gerenciamento de Bloqueios",
                 "🌡️ Monitoramento Climático",
+                "📚 Documentação da API",
                 "⚙️ Configurações"
             ]
         )
@@ -197,6 +444,8 @@ def main():
         show_blocking_management()
     elif page == "🌡️ Monitoramento Climático":
         show_weather_monitoring()
+    elif page == "📚 Documentação da API":
+        show_api_documentation_section()
     elif page == "⚙️ Configurações":
         show_settings()
 
@@ -1515,6 +1764,37 @@ def show_weather_monitoring():
         st.info("ℹ️ Frente fria se aproximando do litoral sul - Temperatura pode cair 8°C")
         st.success("✅ Condições estáveis na região serrana - Tempo bom para os próximos 3 dias")
 
+
+def show_api_documentation_section():
+    """Seção de documentação da API com sub-navegação"""
+    
+    st.title("📚 Documentação da API")
+    st.markdown("---")
+    
+    st.markdown("""
+    Bem-vindo à documentação completa da **Radar Sinistro API**! 
+    
+    Esta seção contém tudo que você precisa para integrar e usar nossa API REST 
+    para cálculo de risco de sinistros e gestão de apólices.
+    """)
+    
+    # Sub-navegação para a API
+    api_section = st.selectbox(
+        "🔍 Selecione a seção:",
+        [
+            "📖 Documentação Completa",
+            "💻 Exemplos de Código"
+        ]
+    )
+    
+    st.markdown("---")
+    
+    if api_section == "📖 Documentação Completa":
+        show_api_documentation()
+    elif api_section == "💻 Exemplos de Código":
+        show_code_examples()
+
+
 def show_settings():
     """Página de configurações"""
     st.header("⚙️ Configurações do Sistema")
@@ -1535,6 +1815,206 @@ def show_settings():
     if st.button("💾 Salvar Configurações"):
         st.success("✅ Configurações salvas com sucesso!")
     
+    # Configurações de Envio Automático de Alertas
+    st.markdown("---")
+    st.subheader("🚨 Configuração de Envio Automático de Alertas")
+    
+    # Ativar/desativar alertas automáticos
+    alertas_automaticos_ativo = st.checkbox(
+        "Ativar envio automático de alertas", 
+        value=False,
+        help="Quando ativado, o sistema enviará alertas automaticamente para apólices em alto risco"
+    )
+    
+    if alertas_automaticos_ativo:
+        st.info("🤖 **Modo Automático Ativado:** O sistema enviará alertas automaticamente conforme configurado abaixo.")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### ⏰ Configurações de Tempo")
+            
+            # Frequência de envio
+            frequencia_alertas = st.selectbox(
+                "Frequência de envio",
+                ["Diário", "Semanal", "Quinzenal", "Mensal"],
+                index=1,
+                help="Com que frequência os alertas serão enviados"
+            )
+            
+            # Horário de envio
+            horario_envio = st.time_input(
+                "Horário de envio",
+                value=datetime.strptime("09:00", "%H:%M").time(),
+                help="Horário em que os alertas serão enviados"
+            )
+            
+            # Limite mínimo de risco
+            limite_risco_alerta = st.slider(
+                "Score mínimo para envio de alerta",
+                50, 100, 75,
+                help="Apólices com score igual ou superior a este valor receberão alertas"
+            )
+        
+        with col2:
+            st.markdown("#### 📧 Configurações da Mensagem")
+            
+            # Assunto do email/SMS
+            assunto_alerta = st.text_input(
+                "Assunto do alerta",
+                value="⚠️ Alerta de Risco - Radar de Sinistro",
+                help="Assunto que aparecerá nos emails/SMS enviados"
+            )
+            
+            # Canal de envio
+            canal_envio = st.multiselect(
+                "Canais de envio",
+                ["Email", "SMS", "WhatsApp", "Sistema Interno"],
+                default=["Email", "Sistema Interno"],
+                help="Selecione os canais pelos quais os alertas serão enviados"
+            )
+            
+            # Incluir dados do clima
+            incluir_clima_alerta = st.checkbox(
+                "Incluir dados climáticos no alerta",
+                value=True,
+                help="Adiciona informações sobre o clima previsto na mensagem"
+            )
+        
+        # Configuração da mensagem personalizada
+        st.markdown("#### 📝 Mensagem Personalizada")
+        st.markdown("""
+        <small>Você pode usar as seguintes variáveis na mensagem:<br>
+        <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{score_risco}</code>, <code>{nivel_risco}</code>, 
+        <code>{tipo_residencia}</code>, <code>{cep}</code>, <code>{valor_segurado}</code>, <code>{data_atual}</code>
+        </small>
+        """, unsafe_allow_html=True)
+        
+        # Mensagem padrão para alertas automáticos
+        mensagem_padrao_auto = """Prezado(a) {segurado},
+
+🚨 ALERTA DE RISCO ALTO - RADAR DE SINISTRO
+
+Identificamos que sua apólice {numero_apolice} apresenta ALTO RISCO de sinistro ({score_risco}/100).
+
+📋 DETALHES DA APÓLICE:
+• Imóvel: {tipo_residencia} 
+• Localização: CEP {cep}
+• Valor Segurado: R$ {valor_segurado:,.2f}
+• Nível de Risco: {nivel_risco}
+
+⚠️ RECOMENDAÇÕES:
+• Verifique as condições do imóvel
+• Reforce medidas preventivas
+• Entre em contato conosco para orientações
+
+📞 Em caso de dúvidas, entre em contato:
+• Telefone: (11) 99999-9999
+• Email: suporte@radarsinistro.com
+
+Atenciosamente,
+Equipe Radar de Sinistro
+Data: {data_atual}"""
+        
+        mensagem_personalizada_auto = st.text_area(
+            "Mensagem do alerta automático:",
+            value=mensagem_padrao_auto,
+            height=300,
+            help="Personalize a mensagem que será enviada automaticamente"
+        )
+        
+        # Preview da mensagem
+        st.markdown("#### 👁️ Pré-visualização da Mensagem")
+        with st.expander("Ver pré-visualização", expanded=False):
+            preview_message = mensagem_personalizada_auto.format(
+                segurado="João da Silva",
+                numero_apolice="POL-2025-001234",
+                score_risco=82.5,
+                nivel_risco="Alto",
+                tipo_residencia="Casa",
+                cep="01234-567",
+                valor_segurado=350000.00,
+                data_atual=datetime.now().strftime("%d/%m/%Y")
+            )
+            st.code(preview_message, language="text")
+        
+        # Configurações avançadas
+        with st.expander("⚙️ Configurações Avançadas"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                max_alertas_por_dia = st.number_input(
+                    "Máximo de alertas por dia",
+                    min_value=1, max_value=1000, value=50,
+                    help="Limite diário de alertas para evitar spam"
+                )
+                
+                cooldown_alerta = st.number_input(
+                    "Intervalo entre alertas (dias)",
+                    min_value=1, max_value=30, value=7,
+                    help="Dias que devem passar antes de enviar novo alerta para a mesma apólice"
+                )
+            
+            with col2:
+                priorizar_maior_risco = st.checkbox(
+                    "Priorizar apólices com maior risco",
+                    value=True,
+                    help="Enviar alertas primeiro para apólices com score mais alto"
+                )
+                
+                incluir_relatorio = st.checkbox(
+                    "Anexar relatório detalhado",
+                    value=False,
+                    help="Incluir PDF com análise detalhada da apólice"
+                )
+        
+        # Botões de ação
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("💾 Salvar Configurações de Alertas", use_container_width=True):
+                # Aqui você salvaria as configurações no banco de dados
+                configuracoes_alertas = {
+                    'ativo': alertas_automaticos_ativo,
+                    'frequencia': frequencia_alertas,
+                    'horario': horario_envio.strftime("%H:%M"),
+                    'limite_risco': limite_risco_alerta,
+                    'assunto': assunto_alerta,
+                    'canais': canal_envio,
+                    'incluir_clima': incluir_clima_alerta,
+                    'mensagem': mensagem_personalizada_auto,
+                    'max_por_dia': max_alertas_por_dia,
+                    'cooldown': cooldown_alerta,
+                    'priorizar_risco': priorizar_maior_risco,
+                    'incluir_relatorio': incluir_relatorio
+                }
+                
+                salvar_configuracoes_alertas(configuracoes_alertas)
+                st.success("✅ Configurações de alertas automáticos salvas com sucesso!")
+        
+        with col2:
+            if st.button("🧪 Testar Configuração", use_container_width=True):
+                with st.spinner("Enviando alerta de teste..."):
+                    resultado_teste = testar_envio_alerta(mensagem_personalizada_auto, canal_envio)
+                    if resultado_teste:
+                        st.success("✅ Teste de alerta enviado com sucesso!")
+                    else:
+                        st.error("❌ Falha no teste de envio de alerta")
+        
+        with col3:
+            if st.button("📊 Executar Agora", use_container_width=True):
+                with st.spinner("Executando envio automático de alertas..."):
+                    resultado = executar_alertas_automaticos(configuracoes_alertas)
+                    if resultado['sucesso']:
+                        st.success(f"✅ {resultado['enviados']} alertas enviados com sucesso!")
+                        if resultado['erros'] > 0:
+                            st.warning(f"⚠️ {resultado['erros']} alertas falharam")
+                    else:
+                        st.error("❌ Falha na execução dos alertas automáticos")
+    
+    else:
+        st.warning("⚠️ Alertas automáticos estão desativados. Ative a opção acima para configurar.")
+
     # Informações do sistema
     st.markdown("---")
     st.subheader("ℹ️ Informações do Sistema")

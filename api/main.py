@@ -11,7 +11,7 @@ import time
 import logging
 from contextlib import asynccontextmanager
 
-from api.routes import risk, policies
+from api.routes import risk, policies, coverages
 
 
 # Configurar logging
@@ -105,6 +105,7 @@ async def log_requests(request: Request, call_next):
 # Registrar rotas
 app.include_router(risk.router, prefix="/api/v1")
 app.include_router(policies.router, prefix="/api/v1")
+app.include_router(coverages.router, prefix="/api/v1")
 
 
 # Rota raiz

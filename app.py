@@ -788,6 +788,38 @@ def show_policies_at_risk():
         # Seleção compacta com multiselect, sem alterar a tabela
         st.markdown("---")
         st.markdown("### ✉️ Enviar Mensagem de Risco para Segurados")
+        # Garantir inicialização de selected_policies
+        if 'selected_policies' not in st.session_state:
+            st.session_state.selected_policies = []
+        # Campo para editar mensagem manual
+        mensagem_padrao_manual = (
+            "Olá, {segurado}!\n"
+            "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) para o imóvel {tipo_residencia} no endereço {cep}.\n"
+            "Recomendamos atenção especial e, se desejar, entre em contato com seu corretor para orientações.\n"
+            "Equipe Radar de Sinistro."
+        )
+        mensagem_manual = st.text_area(
+            "Mensagem a ser enviada:",
+            value=st.session_state.get("mensagem_manual", mensagem_padrao_manual),
+            key="mensagem_manual",
+            height=120
+        )
+        st.caption("<small>Variáveis disponíveis: <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code></small>", unsafe_allow_html=True)
+
+        # Pré-visualização da mensagem para a primeira apólice selecionada
+        if st.session_state.selected_policies:
+            pnum_preview = st.session_state.selected_policies[0]
+            row_preview = df[df['policy_number']==pnum_preview].iloc[0]
+            msg_preview = mensagem_manual.format(
+                segurado=row_preview.get('insured_name', 'Segurado'),
+                numero_apolice=pnum_preview,
+                nivel_risco=row_preview.get('risk_level', ''),
+                score_risco=row_preview.get('risk_score', ''),
+                tipo_residencia=row_preview.get('property_type', ''),
+                cep=row_preview.get('cep', '')
+            )
+            st.markdown("**Pré-visualização da mensagem:**")
+            st.code(msg_preview, language="text")
         # Mostrar resultado persistido de envio anterior, se existir
         if 'last_notification_result' in st.session_state:
             res = st.session_state.last_notification_result
@@ -916,18 +948,15 @@ def show_policies_at_risk():
                     # Placeholder para lookup futuro real de contato (email/telefone poderiam vir do banco se existirem)
                     email = row.get('email') if 'email' in row else None
                     telefone = row.get('telefone') if 'telefone' in row else None
-                    mensagem = (
-                        f"[SIMULAÇÃO] Alerta de risco para apólice {pnum}: score {row['risk_score']:.1f}. "
-                        f"Classificação {row['risk_level']}. Nenhuma ação real foi tomada."
+                    # Mensagem personalizada pelo usuário
+                    mensagem = mensagem_manual.format(
+                        segurado=row.get('insured_name', 'Segurado'),
+                        numero_apolice=pnum,
+                        nivel_risco=row.get('risk_level', ''),
+                        score_risco=row.get('risk_score', ''),
+                        tipo_residencia=row.get('property_type', ''),
+                        cep=row.get('cep', '')
                     )
-                    # PONTO DE EXTENSÃO (envio real):
-                    # Aqui você pode integrar um serviço de envio real (exemplos):
-                    # 1) SMTP: usar smtplib para enviar email.
-                    # 2) SendGrid/Mailgun: chamar API REST com requests.
-                    # 3) SMS/WhatsApp: Twilio / Zenvia / API interna.
-                    # 4) Push interno: publicar em fila (RabbitMQ / Kafka) para processamento assíncrono.
-                    # O código de inserção no banco abaixo permaneceria como log de auditoria do envio.
-                    # IMPORTANTE: quando implementar real, setar simulacao=False e status conforme retorno.
                     crud_local.insert_notificacao_risco(
                         apolice_id=0,  # Sem relacionamento direto carregado aqui
                         numero_apolice=pnum,
@@ -1821,6 +1850,7 @@ def show_settings():
     st.subheader("✉️ Envio Automático de Notificações")
     st.markdown("Configure o envio automático de notificações de risco para apólices em horários programados.")
 
+
     auto_notify_enabled = st.checkbox("Ativar envio automático diário", key="auto_notify_enabled")
     coln1, coln2 = st.columns(2)
     with coln1:
@@ -1841,8 +1871,27 @@ def show_settings():
             disabled=not auto_notify_enabled
         )
 
+    st.markdown("""
+    <small>Você pode personalizar a mensagem enviada ao segurado. Variáveis disponíveis:<br>
+    <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code>
+    </small>
+    """, unsafe_allow_html=True)
+    mensagem_padrao = (
+        "Olá, {segurado}!\n"
+        "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) para o imóvel {tipo_residencia} no endereço {cep}.\n"
+        "Recomendamos atenção especial e, se desejar, entre em contato com seu corretor para orientações.\n"
+        "Equipe Radar de Sinistro."
+    )
+    mensagem_notificacao = st.text_area(
+        "Mensagem de notificação automática:",
+        value=st.session_state.get("mensagem_notificacao", mensagem_padrao),
+        key="mensagem_notificacao",
+        height=120,
+        disabled=not auto_notify_enabled
+    )
+
     if auto_notify_enabled:
-        st.info(f"Notificações automáticas serão enviadas todos os dias às {notify_hour} para apólices com risco: {', '.join(selected_risks) if selected_risks else 'Nenhum selecionado'}.")
+        st.info(f"Notificações automáticas serão enviadas todos os dias às {notify_hour} para apólices com risco: {', '.join(selected_risks) if selected_risks else 'Nenhum selecionado'}. Mensagem personalizada será utilizada.")
     else:
         st.caption("O envio automático está desativado.")
 

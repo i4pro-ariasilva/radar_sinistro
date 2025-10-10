@@ -1101,7 +1101,7 @@ class MapaCalorRiscos:
                         names='Provedor',
                         title="Distribuição de Uso por Provedor"
                     )
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, width='stretch')
             
             # Informações do cache
             st.subheader("💾 Informações do Cache")
@@ -1150,7 +1150,7 @@ def criar_interface_streamlit(policies_df: Optional[pd.DataFrame] = None) -> Non
         usar_exemplo = st.checkbox("🧪 Dados Exemplo", value=True, help="Usar dados de exemplo em vez dos dados reais")
     
     with col4:
-        if st.button("🔄 Atualizar", use_container_width=True):
+        if st.button("🔄 Atualizar", width='stretch'):
             st.rerun()
     
     # LÓGICA SIMPLES: Decidir qual fonte de dados usar
@@ -1393,7 +1393,7 @@ def _exibir_fallback_tabela(policies_df: pd.DataFrame) -> None:
             'num_apolices': 'Nº Apólices',
             'valor_total': 'Valor Total (R$)'
         },
-        use_container_width=True
+        width='stretch'
     )
 
 

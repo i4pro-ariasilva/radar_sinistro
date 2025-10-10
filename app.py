@@ -24,6 +24,8 @@ from policy_management import show_manage_policies
 from pages.api_documentation import show_api_documentation
 from pages.api_code_examples import show_code_examples
 
+from mapa_de_calor_completo import criar_interface_streamlit
+
 # Configuração da página
 st.set_page_config(
     page_title="Radar de Sinistro v3.0",
@@ -413,7 +415,8 @@ def main():
                 "🚫 Gerenciamento de Bloqueios",
                 "🌡️ Monitoramento Climático",
                 "📚 Documentação da API",
-                "⚙️ Configurações"
+                "⚙️ Configurações",
+                "🗺️ Mapa de Calor"
             ]
         )
         
@@ -448,6 +451,8 @@ def main():
         show_api_documentation_section()
     elif page == "⚙️ Configurações":
         show_settings()
+    elif page == "🗺️ Mapa de Calor":
+        show_mapa_calor()
 
 
 
@@ -3158,6 +3163,73 @@ def send_alert_notifications(selected_policies, df, mensagem_personalizada, noti
     
     except Exception as e:
         st.error(f"Erro geral no envio de notificações: {str(e)}")
+
+def show_mapa_calor():
+    """Página do Mapa de Calor - NOVA FUNÇÃO"""
+    #st.header("🗺️ Mapa de Calor - Distribuição de Riscos por CEP")
+    #st.markdown("Visualização geográfica interativa dos riscos de sinistros baseada nos CEPs das apólices cadastradas.")
+    
+    # Verificar se há dados de apólices no banco
+    try:
+        # Buscar dados reais do banco
+        policies_data = get_real_policies_data()
+        
+        if not policies_data:
+            st.warning("⚠️ Nenhuma apólice encontrada no banco de dados.")
+            st.info("💡 Adicione apólices através de 'Gerenciar Apólices' para ver o mapa!")
+            
+            # Botão para ir para gerenciar apólices
+            if st.button("➕ Ir para Gerenciar Apólices", use_container_width=True):
+                st.session_state.page_redirect = "➕ Gerenciar Apólices"
+                st.rerun()
+            
+            # Oferecer dados de exemplo
+            st.markdown("---")
+            st.subheader("📊 Ou visualize com dados de exemplo:")
+            
+            if st.button("🎭 Gerar Mapa com Dados de Exemplo", use_container_width=True):
+                with st.spinner("Gerando mapa com dados simulados..."):
+                    # Gerar DataFrame de exemplo para o mapa de calor
+                    import pandas as pd
+                    mock_policies = generate_mock_policies_data()
+                    mock_df = pd.DataFrame([{
+                        'cep': p['cep'],
+                        'risk_score': p['risk_score'],
+                        'insured_value': p['insured_value'],
+                        'policy_id': p['policy_number']
+                    } for p in mock_policies])
+                    criar_interface_streamlit(mock_df)
+            return
+        
+        # Converter dados do banco para DataFrame
+        import pandas as pd
+        
+        # Preparar dados para o mapa
+        mapa_data = []
+        for policy in policies_data:
+            mapa_data.append({
+                'cep': policy['cep'],
+                'risk_score': policy['risk_score'],
+                'insured_value': policy['insured_value'],
+                'policy_id': policy['policy_number']
+            })
+        
+        # Criar DataFrame
+        policies_df = pd.DataFrame(mapa_data)
+          
+        # Distribuição por nível de risco
+        st.markdown("---")
+
+        # Usar a função completa do mapa de calor
+        criar_interface_streamlit(policies_df)
+        
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados: {e}")
+        st.warning("🔄 Usando dados de exemplo...")
+        
+        # Fallback para dados de exemplo
+        import pandas as pd
+        criar_interface_streamlit(pd.DataFrame())
 
 if __name__ == "__main__":
     main()

@@ -875,35 +875,134 @@ class MapaCalorRiscos:
         
         return mapa
     
+    def _get_fallback_coordinates(self) -> Dict[str, Tuple[float, float]]:
+        """Coordenadas fixas para CEPs verificados como fallback"""
+        return {
+            # São Paulo
+            '01310-100': (-23.5615, -46.6563),  # Av. Paulista
+            '04038-001': (-23.5933, -46.6831),  # Vila Olímpia
+            
+            # Rio de Janeiro
+            '20040-020': (-22.9068, -43.1729),  # Centro RJ
+            '22071-900': (-22.9711, -43.1822),  # Copacabana
+            
+            # Belo Horizonte
+            '30112-000': (-19.9167, -43.9345),  # Centro BH
+            '31270-901': (-19.9394, -43.9381),  # Savassi
+            
+            # Curitiba
+            '80010-000': (-25.4284, -49.2733),  # Centro Curitiba
+            '80230-130': (-25.4419, -49.2769),  # Batel
+            
+            # Porto Alegre
+            '90010-150': (-30.0346, -51.2177),  # Centro POA
+            '91040-001': (-29.9927, -51.1786),  # Zona Norte
+            
+            # Outras capitais
+            '40070-110': (-12.9714, -38.5014),  # Salvador
+            '50030-230': (-8.0476, -34.8770),   # Recife
+            '60160-230': (-3.7172, -38.5433),   # Fortaleza
+            '70040-010': (-15.7942, -47.8822),  # Brasília
+            '69020-160': (-3.1190, -60.0217),   # Manaus
+            '66000-000': (-1.4558, -48.5044),   # Belém
+            '88000-000': (-27.5954, -48.5480),  # Florianópolis
+            '29000-000': (-20.3155, -40.3128),  # Vitória
+            '73000-000': (-16.6864, -49.2643),  # Goiânia
+            '78000-000': (-15.6014, -56.0979),  # Cuiabá
+        }
+    
     def _add_markers_to_map(self, mapa: folium.Map, cep_data: pd.DataFrame) -> int:
-        """Adiciona marcadores ao mapa e retorna número de sucessos"""
+        """Adiciona marcadores ao mapa com fallback para coordenadas fixas"""
         success_count = 0
         max_policies = cep_data['policy_count'].max()
         
-        # Geocodificar todos os CEPs em paralelo para melhor performance
+        # Obter coordenadas de fallback - CORRIGIR AQUI
+        fallback_coords = self._get_fallback_coordinates()  # Adicionar self.
+        
+        # Primeira tentativa: geocodificação normal
         ceps_to_geocode = cep_data['cep'].tolist()
+        
+        #st.info("🔄 Tentando geocodificação online...")
         geocoding_results = self.geocoder.geocode_batch(ceps_to_geocode, show_progress=True)
         
-        for _, row in cep_data.iterrows():
-            coords = geocoding_results.get(row['cep'])
+        # Verificar sucessos da geocodificação online
+        online_sucessos = sum(1 for v in geocoding_results.values() if v is not None)
+        
+        if online_sucessos == 0:
+            #st.warning("⚠️ Geocodificação online falhou. Usando coordenadas de fallback...")
             
-            if coords:
-                success_count += 1
-                risk_config = self._get_risk_config(row['risk_score'])
-                marker_size = self._calculate_marker_size(row['policy_count'], max_policies)
+            # Usar coordenadas de fallback
+            for _, row in cep_data.iterrows():
+                cep = row['cep']
                 
-                popup_html = self._create_popup_html(row['cep'], row.to_dict())
+                # Tentar fallback primeiro
+                coords = fallback_coords.get(cep)
                 
-                folium.CircleMarker(
-                    location=coords,
-                    radius=marker_size,
-                    popup=folium.Popup(popup_html, max_width=self.map_config['popup_width']),
-                    tooltip=f"CEP {row['cep']} - Risco: {row['risk_score']:.1f}",
-                    color=risk_config['color'],
-                    fillColor=risk_config['color'],
-                    fillOpacity=0.7,
-                    weight=2
-                ).add_to(mapa)
+                if coords:
+                    success_count += 1
+                    risk_config = self._get_risk_config(row['risk_score'])
+                    marker_size = self._calculate_marker_size(row['policy_count'], max_policies)
+                    
+                    popup_html = self._create_popup_html(cep, row.to_dict())
+                    
+                    folium.CircleMarker(
+                        location=coords,
+                        radius=marker_size,
+                        popup=folium.Popup(popup_html, max_width=self.map_config['popup_width']),
+                        tooltip=f"CEP {cep} - Risco: {row['risk_score']:.1f} (Fallback)",
+                        color=risk_config['color'],
+                        fillColor=risk_config['color'],
+                        fillOpacity=0.7,
+                        weight=2
+                    ).add_to(mapa)
+                else:
+                    # CEP não tem fallback - usar coordenada genérica do centro do Brasil
+                    coords = (-15.7942, -47.8822)  # Brasília
+                    success_count += 1
+                    
+                    risk_config = self._get_risk_config(row['risk_score'])
+                    marker_size = self._calculate_marker_size(row['policy_count'], max_policies)
+                    
+                    popup_html = self._create_popup_html(cep, row.to_dict())
+                    
+                    folium.CircleMarker(
+                        location=coords,
+                        radius=marker_size,
+                        popup=folium.Popup(popup_html, max_width=self.map_config['popup_width']),
+                        tooltip=f"CEP {cep} - Risco: {row['risk_score']:.1f} (Genérico)",
+                        color=risk_config['color'],
+                        fillColor=risk_config['color'],
+                        fillOpacity=0.6,
+                        weight=1
+                    ).add_to(mapa)
+            
+            # Adicionar aviso no mapa
+            #if success_count > 0:
+            #    st.success(f"✅ Mapa gerado com coordenadas de fallback para {success_count} CEPs")
+            #    st.info("ℹ️ **Modo Fallback:** Usando coordenadas conhecidas devido a falha na geocodificação online")
+        
+        else:
+            # Usar resultados da geocodificação online
+            for _, row in cep_data.iterrows():
+                coords = geocoding_results.get(row['cep'])
+                
+                if coords:
+                    success_count += 1
+                    risk_config = self._get_risk_config(row['risk_score'])
+                    marker_size = self._calculate_marker_size(row['policy_count'], max_policies)
+                    
+                    popup_html = self._create_popup_html(row['cep'], row.to_dict())
+                    
+                    folium.CircleMarker(
+                        location=coords,
+                        radius=marker_size,
+                        popup=folium.Popup(popup_html, max_width=self.map_config['popup_width']),
+                        tooltip=f"CEP {row['cep']} - Risco: {row['risk_score']:.1f}",
+                        color=risk_config['color'],
+                        fillColor=risk_config['color'],
+                        fillOpacity=0.7,
+                        weight=2
+                    ).add_to(mapa)
         
         return success_count
     
@@ -1028,24 +1127,17 @@ class MapaCalorRiscos:
 
 
 def criar_interface_streamlit(policies_df: Optional[pd.DataFrame] = None) -> None:
-    """
-    Cria interface completa do mapa no Streamlit v4.0
+    """Cria interface completa do mapa no Streamlit v4.0"""
     
-    COMPATIBILIDADE TOTAL: Esta função mantém 100% de compatibilidade
-    com app.py, apenas com melhorias internas de performance e UX.
-    
-    Args:
-        policies_df: DataFrame com dados das apólices (opcional)
-    """
-    # Header principal - MANTIDO IGUAL para compatibilidade
+    # Header principal
     st.header("🗺️ Mapa de Calor - Distribuição de Riscos por CEP")
     st.markdown(
         "Visualização geográfica interativa dos riscos de sinistros "
         "baseada nos CEPs das apólices cadastradas."
     )
     
-    # Controles avançados v4.0 (novos)
-    col1, col2, col3 = st.columns([2, 1, 1])
+    # Controles principais
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     
     with col1:
         st.info("🎯 **Mapa Interativo v4.0:** Performance otimizada com geocodificação paralela")
@@ -1054,35 +1146,57 @@ def criar_interface_streamlit(policies_df: Optional[pd.DataFrame] = None) -> Non
         show_analytics = st.checkbox("📊 Analytics", value=False, help="Mostrar métricas detalhadas")
     
     with col3:
+        # NOVA OPÇÃO: Usar dados de exemplo
+        usar_exemplo = st.checkbox("🧪 Dados Exemplo", value=True, help="Usar dados de exemplo em vez dos dados reais")
+    
+    with col4:
         if st.button("🔄 Atualizar", use_container_width=True):
             st.rerun()
     
-    # Gerar dados de exemplo se não fornecidos - MANTIDO IGUAL
-    if policies_df is None:
+    # LÓGICA SIMPLES: Decidir qual fonte de dados usar
+    if usar_exemplo:
+        # Usuário optou por dados de exemplo
+        st.info("🧪 **Modo Exemplo Ativado:** Usando dados de teste com CEPs verificados")
         policies_df = _gerar_dados_exemplo()
-        st.warning("📊 Usando dados de exemplo. Integre com seu sistema para dados reais.")
-    
-    if policies_df.empty:
-        st.warning("📭 Nenhuma apólice cadastrada encontrada no sistema")
         
-        # Sugestão de ação - MANTIDO IGUAL
-        st.markdown("### 💡 Como adicionar dados:")
-        st.markdown("""
-        1. **Cadastre apólices** com CEPs válidos
-        2. **Certifique-se** que as colunas necessárias existem:
-           - `cep`: CEP da propriedade
-           - `risk_score`: Score de risco (0-100)
-           - `insured_value`: Valor segurado
-        3. **Recarregue** esta página
-        """)
+    elif policies_df is None or len(policies_df) == 0:
+        # Não há dados do app.py, usar exemplo como fallback
+        st.warning("📊 Nenhum dado recebido do sistema. Usando dados de exemplo.")
+        policies_df = _gerar_dados_exemplo()
+        
+    elif policies_df['cep'].nunique() == 1:
+        # Detectou problema nos dados (só 1 CEP), sugerir exemplo
+        cep_unico = policies_df['cep'].iloc[0]
+        st.warning(f"⚠️ Detectado apenas 1 CEP único nos dados: {cep_unico}")
+        
+        col_suggest1, col_suggest2 = st.columns(2)
+        with col_suggest1:
+            st.markdown("**Opções:**")
+            st.markdown("1. ✅ Marque '🧪 Dados Exemplo' acima")
+            st.markdown("2. 📋 Adicione mais apólices no sistema")
+        
+        with col_suggest2:
+            if st.button("🔄 Usar Exemplo Automaticamente"):
+                usar_exemplo = True
+                st.rerun()
+    
+    # Usar dados conforme decidido
+    if policies_df.empty:
+        st.warning("📭 Nenhuma apólice encontrada")
         return
     
-    # Métricas resumidas - MANTIDO IGUAL para compatibilidade
+    # Mostrar informação sobre fonte dos dados
+    if usar_exemplo:
+        st.success(f"🧪 **Dados de Exemplo:** {len(policies_df)} apólices, {policies_df['cep'].nunique()} CEPs únicos")
+    else:
+        st.info(f"📊 **Dados do Sistema:** {len(policies_df)} apólices, {policies_df['cep'].nunique()} CEPs únicos")
+    
+    # Resto da função continua exatamente igual...
     _exibir_metricas_resumo(policies_df)
     
-    # Filtros avançados v4.0 (novos - opcionais)
+    # Filtros avançados v4.0 (opcionais)
     if show_analytics:
-        st.markdown("### 🎛️ Controles Avançados v4.0")
+        st.markdown("### 🎛️ Controles Avançados")
         
         col1, col2, col3 = st.columns(3)
         
@@ -1103,7 +1217,7 @@ def criar_interface_streamlit(policies_df: Optional[pd.DataFrame] = None) -> Non
         with col3:
             map_style = st.selectbox(
                 "Estilo do Mapa",
-                ["OpenStreetMap", "CartoDB Positron", "CartoDB Dark"],
+                ["OpenStreetMap", "CartoDB Positron", "CartoDB Dark Matter"],
                 help="Escolher estilo visual do mapa"
             )
     else:
@@ -1111,116 +1225,109 @@ def criar_interface_streamlit(policies_df: Optional[pd.DataFrame] = None) -> Non
         risk_filter = "Todos"
         value_filter = "Todos"
         map_style = "OpenStreetMap"
-        
-        # Aplicar filtros
-        if show_analytics:
-            if risk_filter != "Todos":
-                if "Alto" in risk_filter:
-                    policies_df = policies_df[policies_df['risk_score'] >= 75]
-                elif "Médio" in risk_filter:
-                    policies_df = policies_df[(policies_df['risk_score'] >= 50) & (policies_df['risk_score'] < 75)]
-                elif "Baixo" in risk_filter:
-                    policies_df = policies_df[policies_df['risk_score'] < 50]
-            
-            if value_filter != "Todos":
-                if "Até 200k" in value_filter:
-                    policies_df = policies_df[policies_df['insured_value'] <= 200000]
-                elif "200k-500k" in value_filter:
-                    policies_df = policies_df[(policies_df['insured_value'] > 200000) & (policies_df['insured_value'] <= 500000)]
-                elif "500k+" in value_filter:
-                    policies_df = policies_df[policies_df['insured_value'] > 500000]
-            
-            if policies_df.empty:
-                st.warning("⚠️ Nenhuma apólice corresponde aos filtros selecionados")
-                return
     
-    # Gerar e exibir mapa - CORE MANTIDO, com melhorias internas
+    # Aplicar filtros
+    if risk_filter != "Todos":
+        if "Alto" in risk_filter:
+            policies_df = policies_df[policies_df['risk_score'] >= 75]
+        elif "Médio" in risk_filter:
+            policies_df = policies_df[(policies_df['risk_score'] >= 50) & (policies_df['risk_score'] < 75)]
+        elif "Baixo" in risk_filter:
+            policies_df = policies_df[policies_df['risk_score'] < 50]
+
+    if value_filter != "Todos":
+        if "Até 200k" in value_filter:
+            policies_df = policies_df[policies_df['insured_value'] <= 200000]
+        elif "200k-500k" in value_filter:
+            policies_df = policies_df[(policies_df['insured_value'] > 200000) & (policies_df['insured_value'] <= 500000)]
+        elif "500k+" in value_filter:
+            policies_df = policies_df[policies_df['insured_value'] > 500000]
+    
+    if policies_df.empty:
+        st.warning("⚠️ Nenhuma apólice corresponde aos filtros selecionados")
+        return
+    
+    # Gerar e exibir mapa
     st.markdown("---")
     
-    with st.spinner("🔄 Gerando mapa de calor v4.0... (Geocodificação paralela ativa)"):
+    with st.spinner("🔄 Gerando mapa de calor v4.0..."):
         try:
-            # Criar instâncias com melhorias v4.0
-            geocoder = OSMGeocoder(parallel_workers=5)  # Geocodificação paralela
+            geocoder = OSMGeocoder(parallel_workers=5)
             mapa_generator = MapaCalorRiscos(geocoder)
             
-            # Configurar estilo do mapa se analytics ativo
-            if show_analytics and map_style != "OpenStreetMap":
-                # Aplicar estilo escolhido internamente
-                mapa_generator.map_config['tiles'] = [map_style]
+            # ✅ CORREÇÃO: Mapear estilo ANTES de gerar mapa
+            style_mapping = {
+                "OpenStreetMap": "OpenStreetMap",
+                "CartoDB Positron": "CartoDB positron", 
+                "CartoDB Dark Matter": "CartoDB dark_matter"
+            }
             
-            # Gerar mapa - FUNÇÃO PRINCIPAL MANTIDA
+            folium_style = style_mapping.get(map_style, "OpenStreetMap")
+            mapa_generator.map_config['tiles'] = [folium_style]
+            
             mapa_html = mapa_generator.criar_mapa_calor(policies_df)
             
-            # Renderizar mapa - MANTIDO IGUAL
             components.html(mapa_html, height=650, scrolling=False)
             
-            st.success(f"✅ Mapa v4.0 gerado com sucesso para {len(policies_df)} apólices")
+            #st.success(f"✅ Mapa v4.0 gerado com sucesso para {len(policies_df)} apólices")
             
-            # Analytics detalhadas v4.0 (opcionais)
-            if show_analytics:
-                stats = geocoder.get_comprehensive_stats()
+            #if show_analytics:
+            #    stats = geocoder.get_comprehensive_stats()
                 
-                with st.expander("📊 Métricas de Performance v4.0"):
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.metric("Taxa de Sucesso", f"{stats['geocoding_stats']['success_rate']:.1f}%")
-                    
-                    with col2:
-                        st.metric("Cache Hit Rate", f"{stats['performance_stats']['cache_hit_rate']:.1f}%")
-                    
-                    with col3:
-                        st.metric("Tempo Médio", f"{stats['performance_stats']['avg_response_time_ms']:.0f}ms")
-                    
-                    # Informações dos provedores
-                    st.write("**Provedores Ativos:**", ", ".join(stats['provider_stats']['active_providers']))
+                #with st.expander("📊 Métricas de Performance v4.0"):
+                #    col1, col2, col3 = st.columns(3)
+                #    
+                #    with col1:
+                #        st.metric("Taxa de Sucesso", f"{stats['geocoding_stats']['success_rate']:.1f}%")
+                #    
+                #    with col2:
+                #        st.metric("Cache Hit Rate", f"{stats['performance_stats']['cache_hit_rate']:.1f}%")
+                #    
+                #    with col3:
+                #        st.metric("Tempo Médio", f"{stats['performance_stats']['avg_response_time_ms']:.0f}ms")
+                #    
+                #    st.write("**Provedores Ativos:**", ", ".join(stats['provider_stats']['active_providers']))
             
         except Exception as e:
             st.error(f"❌ Erro ao gerar mapa: {e}")
-            
-            # Fallback: mostrar dados em tabela - MANTIDO IGUAL
             _exibir_fallback_tabela(policies_df)
 
 
 def _gerar_dados_exemplo() -> pd.DataFrame:
-    """Gera dados de exemplo para demonstração"""
+    """Gera dados de exemplo para demonstração - INDEPENDENTE do app.py"""
     import numpy as np
     
-    # Configurar seed para dados consistentes
-    np.random.seed(42)
+    # Seed fixo para resultados consistentes
+    np.random.seed(12345)
     
-    # CEPs de exemplo (regiões conhecidas do Brasil)
-    ceps_exemplo = [
-        '01310-100',  # São Paulo - SP
-        '04038-001',  # São Paulo - SP
-        '20040-020',  # Rio de Janeiro - RJ
-        '22071-900',  # Rio de Janeiro - RJ
-        '30112-000',  # Belo Horizonte - MG
-        '31270-901',  # Belo Horizonte - MG
-        '80010-000',  # Curitiba - PR
-        '80230-130',  # Curitiba - PR
-        '90010-150',  # Porto Alegre - RS
-        '91040-001',  # Porto Alegre - RS
-        '40070-110',  # Salvador - BA
-        '41770-395',  # Salvador - BA
-        '60160-230',  # Fortaleza - CE
-        '60811-905',  # Fortaleza - CE
-        '50030-230',  # Recife - PE
-        '52061-160',  # Recife - PE
-        '70040-010',  # Brasília - DF
-        '72405-610',  # Brasília - DF
-        '69020-160',  # Manaus - AM
-        '69083-000',  # Manaus - AM
+    # CEPs verificados que têm coordenadas de fallback
+    ceps_verificados = [
+        '01310-100', '04038-001', '20040-020', '22071-900', '30112-000',
+        '31270-901', '80010-000', '80230-130', '90010-150', '91040-001',
+        '40070-110', '50030-230', '60160-230', '70040-010', '69020-160',
+        '66000-000', '88000-000', '29000-000', '73000-000', '78000-000'
     ]
     
-    # Gerar dados aleatórios
+    # Garantir distribuição pelos CEPs
     dados = []
-    for i, cep in enumerate(ceps_exemplo * 3):  # Triplicar para ter mais dados
+    
+    # Pelo menos 1 apólice por CEP
+    for cep in ceps_verificados:
         dados.append({
             'cep': cep,
             'risk_score': np.random.uniform(10, 90),
             'insured_value': np.random.uniform(100000, 800000),
-            'policy_id': f'EX-{i+1:04d}'
+            'policy_id': f'EXEMPLO-{len(dados)+1:04d}'
+        })
+    
+    # Apólices adicionais aleatórias
+    for i in range(30):
+        cep = np.random.choice(ceps_verificados)
+        dados.append({
+            'cep': cep,
+            'risk_score': np.random.uniform(10, 90),
+            'insured_value': np.random.uniform(100000, 800000),
+            'policy_id': f'EXEMPLO-{len(dados)+1:04d}'
         })
     
     return pd.DataFrame(dados)

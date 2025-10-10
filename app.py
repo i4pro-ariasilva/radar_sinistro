@@ -1626,8 +1626,8 @@ def show_settings():
 
 def show_mapa_calor():
     """Página do Mapa de Calor - NOVA FUNÇÃO"""
-    st.header("🗺️ Mapa de Calor - Distribuição de Riscos por CEP")
-    st.markdown("Visualização geográfica interativa dos riscos de sinistros baseada nos CEPs das apólices cadastradas.")
+    #st.header("🗺️ Mapa de Calor - Distribuição de Riscos por CEP")
+    #st.markdown("Visualização geográfica interativa dos riscos de sinistros baseada nos CEPs das apólices cadastradas.")
     
     # Verificar se há dados de apólices no banco
     try:
@@ -1676,54 +1676,10 @@ def show_mapa_calor():
         
         # Criar DataFrame
         policies_df = pd.DataFrame(mapa_data)
-        
-        # Métricas resumidas antes do mapa
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_policies = len(policies_df)
-        unique_ceps = policies_df['cep'].nunique()
-        avg_risk = policies_df['risk_score'].mean()
-        total_value = policies_df['insured_value'].sum()
-        
-        with col1:
-            st.metric("📋 Total de Apólices", f"{total_policies:,}")
-        
-        with col2:
-            st.metric("📍 CEPs Únicos", f"{unique_ceps:,}")
-        
-        with col3:
-            st.metric("🎯 Risco Médio", f"{avg_risk:.1f}")
-        
-        with col4:
-            st.metric("💰 Valor Total", f"R$ {total_value/1000000:.1f}M")
-        
+          
         # Distribuição por nível de risco
         st.markdown("---")
-        st.subheader("📊 Distribuição por Nível de Risco")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        muito_baixo = len(policies_df[policies_df['risk_score'] < 25])
-        baixo = len(policies_df[(policies_df['risk_score'] >= 25) & (policies_df['risk_score'] < 50)])
-        medio = len(policies_df[(policies_df['risk_score'] >= 50) & (policies_df['risk_score'] < 75)])
-        alto = len(policies_df[policies_df['risk_score'] >= 75])
-        
-        with col1:
-            st.metric("🟢 Muito Baixo", muito_baixo, f"{muito_baixo/total_policies*100:.1f}%")
-        
-        with col2:
-            st.metric("🔵 Baixo", baixo, f"{baixo/total_policies*100:.1f}%")
-        
-        with col3:
-            st.metric("🟡 Médio", medio, f"{medio/total_policies*100:.1f}%")
-        
-        with col4:
-            st.metric("🔴 Alto", alto, f"{alto/total_policies*100:.1f}%")
-        
-        # Chamar a interface do mapa de calor com dados reais
-        st.markdown("---")
-        st.success(f"✅ Exibindo mapa com {total_policies} apólices REAIS do banco de dados!")
-        
+
         # Usar a função completa do mapa de calor
         criar_interface_streamlit(policies_df)
         

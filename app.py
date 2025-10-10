@@ -163,6 +163,7 @@ def main():
             [
                 " Apólices em Risco",
                 "➕ Gerenciar Apólices",
+                "🚨 Gerenciamento de Alertas",
                 "🚫 Gerenciamento de Bloqueios",
                 "🌡️ Monitoramento Climático",
                 "⚙️ Configurações"
@@ -190,6 +191,8 @@ def main():
         show_policies_at_risk()
     elif page == "➕ Gerenciar Apólices":
         show_manage_policies()
+    elif page == "🚨 Gerenciamento de Alertas":
+        show_alert_management()
     elif page == "🚫 Gerenciamento de Bloqueios":
         show_blocking_management()
     elif page == "🌡️ Monitoramento Climático":
@@ -2341,6 +2344,332 @@ def show_visualizar_bloqueios():
                                 st.rerun()
         else:
             st.info("Nenhum bloqueio regional ativo encontrado.")
+
+def show_alert_management():
+    """Módulo de Gerenciamento de Alertas - Busca e envio de notificações para apólices"""
+    
+    st.header("🚨 Gerenciamento de Alertas")
+    st.markdown("Sistema centralizado para busca de apólices e envio de notificações de risco")
+    
+    # Seção de busca de apólices
+    st.markdown("---")
+    st.subheader("🔍 Busca de Apólices")
+    
+    col1, col2, col3 = st.columns([2, 1, 2])
+
+    with col1:
+        search_policy = st.text_input(
+            "Buscar Apólice", 
+            placeholder="Digite o número da apólice (ex: POL-2025-001234) ou deixe vazio para listar todas",
+            help="Busque uma apólice específica pelo número ou deixe vazio para ver todas"
+        )
+
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
+        search_button = st.button("🔍 Buscar", use_container_width=True)
+
+    with col3:
+        st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
+    
+    # Filtros avançados
+    st.markdown("### 🎛️ Filtros de Busca")
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        risk_filter = st.selectbox(
+            "Nível de Risco",
+            ["Todos", "Alto (75-100)", "Médio-Alto (50-75)", "Médio-Baixo (25-50)", "Baixo (0-25)"]
+        )
+
+    with col2:
+        property_type = st.selectbox(
+            "Tipo de Imóvel",
+            ["Todos", "Casa", "Apartamento", "Sobrado", "Cobertura", "Kitnet"]
+        )
+
+    with col3:
+        value_range = st.selectbox(
+            "Faixa de Valor",
+            ["Todos", "Até R$ 100k", "R$ 100k - 300k", "R$ 300k - 500k", "R$ 500k - 1M", "Acima R$ 1M"]
+        )
+
+    with col4:
+        notified_filter = st.selectbox(
+            "Status de Notificação",
+            ["Todas", "Já Notificadas Hoje", "Não Notificadas Hoje", "Nunca Notificadas"]
+        )
+    
+    # Buscar apólices baseado nos filtros
+    current_filters = (search_policy, risk_filter, property_type, value_range, notified_filter)
+    if 'alert_policies_cache' not in st.session_state or st.session_state.get('last_alert_filters', None) != current_filters:
+        policies_data = get_real_policies_data(search_policy, risk_filter, property_type, value_range)
+        st.session_state.alert_policies_cache = policies_data
+        st.session_state.last_alert_filters = current_filters
+    
+    policies_data = st.session_state.alert_policies_cache
+    
+    # Resumo das apólices encontradas
+    st.markdown("---")
+    st.subheader("📊 Resumo da Busca")
+    
+    if policies_data:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        high_risk = len([p for p in policies_data if p['risk_score'] >= 75])
+        medium_risk = len([p for p in policies_data if 50 <= p['risk_score'] < 75])
+        low_risk = len([p for p in policies_data if p['risk_score'] < 50])
+        total_found = len(policies_data)
+        
+        with col1:
+            st.metric("📋 Total Encontradas", total_found)
+        
+        with col2:
+            st.metric("🔴 Alto Risco", high_risk, f"{high_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        with col3:
+            st.metric("🟡 Médio Risco", medium_risk, f"{medium_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        with col4:
+            st.metric("🟢 Baixo Risco", low_risk, f"{low_risk/total_found*100:.1f}%" if total_found else "0%")
+        
+        # Lista compacta das apólices encontradas (sem tabela completa)
+        st.markdown("---")
+        st.subheader("📋 Apólices Encontradas")
+        
+        # Criar DataFrame básico
+        df = pd.DataFrame(policies_data)
+        # Forçar conversão para float
+        df['risk_score'] = df['risk_score'].astype(float)
+        df['risk_level'] = df['risk_score'].apply(get_risk_level_emoji)
+
+        # Obter status de notificações
+        try:
+            from database import get_database, CRUDOperations
+            crud_tmp = CRUDOperations(get_database())
+            notificacoes_map = crud_tmp.get_notificacoes_por_apolices(df['policy_number'].tolist())
+        except Exception:
+            notificacoes_map = {}
+
+        # Aplicar filtro de notificação
+        df['notified_today'] = df['policy_number'].apply(lambda p: '✅' if p in notificacoes_map else '—')
+
+        if notified_filter == "Já Notificadas Hoje":
+            df = df[df['notified_today'] == '✅']
+        elif notified_filter == "Não Notificadas Hoje":
+            df = df[df['notified_today'] == '—']
+        elif notified_filter == "Nunca Notificadas":
+            # Para este filtro, precisaríamos de uma consulta mais complexa no banco
+            pass
+        
+        # Mostrar lista resumida
+        if len(df) > 0:
+            # Lista em formato compacto
+            for idx, row in df.head(10).iterrows():  # Mostrar apenas os primeiros 10
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                
+                with col1:
+                    st.write(f"**{row['policy_number']}** - {row.get('insured_name', 'N/A')}")
+                
+                with col2:
+                    st.write(f"{row['risk_level']} (Score: {row['risk_score']:.1f})")
+                
+                with col3:
+                    st.write(f"{row['property_type'].title()} - {row['cep']}")
+                
+                with col4:
+                    st.write(f"Notif.: {row['notified_today']}")
+            
+            if len(df) > 10:
+                st.info(f"Mostrando primeiras 10 de {len(df)} apólices encontradas. Use os filtros para refinar a busca.")
+        
+        # Seção de envio de notificações
+        st.markdown("---")
+        st.subheader("✉️ Envio de Notificações")
+        
+        # Seleção de apólices para notificar
+        if 'selected_alert_policies' not in st.session_state:
+            st.session_state.selected_alert_policies = []
+        
+        # Opções de seleção rápida
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("Selecionar Todas", use_container_width=True):
+                st.session_state.selected_alert_policies = df['policy_number'].tolist()
+        
+        with col2:
+            if st.button("Limpar Seleção", use_container_width=True):
+                st.session_state.selected_alert_policies = []
+        
+        # Multiselect para seleção manual
+        selectable_policies = df['policy_number'].tolist()
+        
+        def format_policy_option(policy_num):
+            row = df[df['policy_number'] == policy_num].iloc[0]
+            return f"{policy_num} | {row['risk_level']} | Score: {row['risk_score']:.1f} | {row['property_type'].title()}"
+        
+        selected_policies = st.multiselect(
+            "Selecione as apólices para notificar:",
+            options=selectable_policies,
+            default=st.session_state.selected_alert_policies,
+            format_func=format_policy_option,
+            help="Selecione uma ou mais apólices para enviar notificações"
+        )
+        
+        st.session_state.selected_alert_policies = selected_policies
+        
+    # Configuração da mensagem
+    st.markdown("#### 📝 Configuração da Mensagem")
+    st.markdown("""
+<small>Você pode personalizar a mensagem enviada ao segurado. Variáveis disponíveis:<br>
+<code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code>
+</small>
+""", unsafe_allow_html=True)
+
+    mensagem_padrao = (
+        "Olá, {segurado}!\n"
+        "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) "
+        "para o imóvel {tipo_residencia} no endereço {cep}.\n"
+        "Recomendamos atenção especial e, se desejar, entre em contato conosco para orientações.\n\n"
+        "Atenciosamente,\n"
+        "Equipe Radar de Sinistro."
+    )
+
+    mensagem_personalizada = st.text_area(
+        "Mensagem a ser enviada:",
+        value=mensagem_padrao,
+        height=120,
+        help="Use as variáveis: {segurado}, {numero_apolice}, {nivel_risco}, {score_risco}, {tipo_residencia}, {cep}"
+    )
+
+    # Pré-visualização da mensagem
+    if selected_policies:
+        st.markdown("#### 👁️ Pré-visualização")
+        preview_policy = selected_policies[0]
+        preview_row = df[df['policy_number'] == preview_policy].iloc[0]
+
+        preview_message = mensagem_personalizada.format(
+            segurado=preview_row.get('insured_name', 'Segurado'),
+            numero_apolice=preview_policy,
+            nivel_risco=preview_row['risk_level'],
+            score_risco=preview_row['risk_score'],
+            tipo_residencia=preview_row['property_type'],
+            cep=preview_row['cep']
+        )
+
+        st.code(preview_message, language="text")
+        st.caption(f"Pré-visualização baseada na apólice: {preview_policy}")
+        
+        # Botão de envio
+        st.markdown("#### 🚀 Enviar Notificações")
+        
+        if selected_policies:
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                st.info(f"📊 {len(selected_policies)} apólice(s) selecionada(s) para notificação")
+            
+            with col2:
+                if st.button("🚨 Enviar Alertas", type="primary", use_container_width=True):
+                    send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map)
+        else:
+            st.warning("⚠️ Selecione pelo menos uma apólice para enviar notificações.")
+    
+    else:
+        st.info("📭 Nenhuma apólice encontrada com os critérios de busca especificados.")
+        st.markdown("**Sugestões:**")
+        st.markdown("- Verifique se o número da apólice está correto")
+        st.markdown("- Tente ajustar os filtros de busca")
+        st.markdown("- Use 'Gerenciar Apólices' para adicionar novas apólices")
+
+def send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map):
+    """Enviar notificações para as apólices selecionadas"""
+    
+    from database import get_database, CRUDOperations
+    
+    try:
+        db = get_database()
+        db.ensure_notifications_table()
+        crud = CRUDOperations(db)
+        
+        enviados = []
+        ja_notificados = []
+        erros = []
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for i, policy_num in enumerate(selected_policies):
+            status_text.text(f"Processando: {policy_num}")
+            progress_bar.progress((i + 1) / len(selected_policies))
+            
+            # Verificar se já foi notificada hoje
+            if policy_num in notificacoes_map:
+                ja_notificados.append(policy_num)
+                continue
+            
+            try:
+                row = df[df['policy_number'] == policy_num].iloc[0]
+                
+                # Personalizar mensagem
+                mensagem = mensagem_personalizada.format(
+                    segurado=row.get('insured_name', 'Segurado'),
+                    numero_apolice=policy_num,
+                    nivel_risco=row['risk_level'],
+                    score_risco=row['risk_score'],
+                    tipo_residencia=row['property_type'],
+                    cep=row['cep']
+                )
+                
+                # Registrar notificação no banco
+                crud.insert_notificacao_risco(
+                    apolice_id=0,
+                    numero_apolice=policy_num,
+                    segurado=row.get('insured_name'),
+                    email=row.get('email'),
+                    telefone=row.get('telefone'),
+                    canal='sistema_alertas',
+                    mensagem=mensagem,
+                    score_risco=row['risk_score'],
+                    nivel_risco=row['risk_level'],
+                    simulacao=True,
+                    status='sucesso'
+                )
+                
+                enviados.append(policy_num)
+                
+            except Exception as e:
+                erros.append((policy_num, str(e)))
+        
+        # Limpar barra de progresso
+        progress_bar.empty()
+        status_text.empty()
+        
+        # Mostrar resultados
+        if enviados:
+            st.success(f"✅ {len(enviados)} notificação(ões) enviada(s) com sucesso!")
+            with st.expander("Apólices notificadas"):
+                for policy in enviados:
+                    st.write(f"• {policy}")
+        
+        if ja_notificados:
+            st.info(f"ℹ️ {len(ja_notificados)} apólice(s) já havia(m) sido notificada(s) hoje:")
+            with st.expander("Apólices já notificadas"):
+                for policy in ja_notificados:
+                    st.write(f"• {policy}")
+        
+        if erros:
+            st.error(f"❌ {len(erros)} erro(s) no envio:")
+            with st.expander("Erros detalhados"):
+                for policy, erro in erros:
+                    st.write(f"• {policy}: {erro}")
+        
+        # Limpar seleção após envio
+        if enviados or ja_notificados:
+            st.session_state.selected_alert_policies = []
+    
+    except Exception as e:
+        st.error(f"Erro geral no envio de notificações: {str(e)}")
 
 if __name__ == "__main__":
     main()

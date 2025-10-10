@@ -237,7 +237,9 @@ def save_policy_to_database(policy_data, risk_data):
             data_contratacao=datetime.fromisoformat(policy_data['data_inicio']),
             latitude=None,  # Será preenchido posteriormente via geocoding
             longitude=None,  # Será preenchido posteriormente via geocoding
-            ativa=True
+            ativa=True,
+            email=policy_data.get('email'),  # NOVO: campo de email
+            telefone=policy_data.get('telefone')  # NOVO: campo de telefone
         )
         
         # Adicionar campos extras para dados de risco
@@ -662,6 +664,18 @@ def show_individual_policy_form():
                 help="Nome completo do segurado"
             )
             
+            email = st.text_input(
+                "Email",
+                placeholder="Ex: joao.silva@email.com",
+                help="Email do segurado para contato"
+            )
+            
+            telefone = st.text_input(
+                "Telefone",
+                placeholder="Ex: (11) 99999-9999",
+                help="Telefone do segurado para contato"
+            )
+            
             cep = st.text_input(
                 "CEP *",
                 placeholder="Ex: 01234-567",
@@ -1046,7 +1060,9 @@ def show_batch_policy_upload():
         'cep': ['01234-567', '89012345', '13579-024'],
         'valor_segurado': [300000.0, 450000.0, 180000.0],
         'data_inicio': ['2024-10-07', '2024-10-07', '2024-10-07'],
-        'tipo_residencia': ['Casa', 'Apartamento', 'Sobrado']
+        'tipo_residencia': ['Casa', 'Apartamento', 'Sobrado'],
+        'email': ['joao.silva@email.com', 'maria.oliveira@email.com', 'pedro.ferreira@email.com'],
+        'telefone': ['(11) 98765-4321', '(21) 99876-5432', '(31) 97654-3210']
     })
     
     st.dataframe(template_data, use_container_width=True)
@@ -1282,7 +1298,9 @@ def process_batch_policies(df, df_coberturas=None):
                 'data_inicio': str(row['data_inicio']),
                 'tipo_residencia': str(row['tipo_residencia']).strip() if pd.notna(row.get('tipo_residencia')) else 'Casa',
                 'cd_produto': cd_produto,
-                'nome_produto': nome_produto
+                'nome_produto': nome_produto,
+                'email': str(row['email']).strip() if pd.notna(row.get('email')) and str(row.get('email')).strip() != '' else None,
+                'telefone': str(row['telefone']).strip() if pd.notna(row.get('telefone')) and str(row.get('telefone')).strip() != '' else None
             }
             
             # Processar coberturas se disponível

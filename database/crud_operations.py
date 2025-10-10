@@ -37,8 +37,8 @@ class CRUDOperations:
         INSERT INTO apolices (
             numero_apolice, segurado, cd_produto, cep, latitude, longitude, tipo_residencia,
             valor_segurado, data_contratacao, data_inicio, ativa, 
-            score_risco, nivel_risco, probabilidade_sinistro, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            score_risco, nivel_risco, probabilidade_sinistro, email, telefone, notificada, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             apolice.numero_apolice,
@@ -55,6 +55,9 @@ class CRUDOperations:
             getattr(apolice, 'score_risco', 0.0),
             getattr(apolice, 'nivel_risco', 'baixo'),
             getattr(apolice, 'probabilidade_sinistro', 0.0),
+            getattr(apolice, 'email', None),
+            getattr(apolice, 'telefone', None),
+            getattr(apolice, 'notificada', 0),
             datetime.now().isoformat()
         )
         
@@ -86,7 +89,15 @@ class CRUDOperations:
                 data_contratacao=datetime.fromisoformat(row['data_contratacao']),
                 ativa=bool(row['ativa']),
                 created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
-                updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None
+                updated_at=datetime.fromisoformat(row['updated_at']) if row['updated_at'] else None,
+                # Campos estendidos
+                data_inicio=datetime.fromisoformat(row['data_inicio']) if row['data_inicio'] else None,
+                score_risco=row['score_risco'] if 'score_risco' in row.keys() else 0.0,
+                nivel_risco=row['nivel_risco'] if 'nivel_risco' in row.keys() else 'baixo',
+                probabilidade_sinistro=row['probabilidade_sinistro'] if 'probabilidade_sinistro' in row.keys() else 0.0,
+                email=row['email'] if 'email' in row.keys() else None,
+                telefone=row['telefone'] if 'telefone' in row.keys() else None,
+                notificada=row['notificada'] if 'notificada' in row.keys() else 0
             )
         return None
     
@@ -701,4 +712,160 @@ class CRUDOperations:
             
         except Exception as e:
             logger.error(f"Erro ao inserir coberturas para apólice {nr_apolice}: {e}")
+            return False
+
+    # ==================== OPERAÇÕES PARA NOTIFICAÇÕES ====================
+    
+    def insert_notificacao_risco(self, apolice_id: int, numero_apolice: str, segurado: str = None,
+                                email: str = None, telefone: str = None, canal: str = 'sistema_alertas',
+                                mensagem: str = '', score_risco: float = None, nivel_risco: str = None,
+                                simulacao: bool = False, status: str = 'sucesso') -> int:
+        """
+        Insere uma nova notificação de risco
+        
+        Args:
+            apolice_id: ID da apólice
+            numero_apolice: Número da apólice
+            segurado: Nome do segurado
+            email: Email do segurado
+            telefone: Telefone do segurado
+            canal: Canal de notificação (email, sms, sistema_alertas, etc.)
+            mensagem: Mensagem da notificação
+            score_risco: Score de risco
+            nivel_risco: Nível de risco
+            simulacao: Se é uma simulação ou notificação real
+            status: Status da notificação
+            
+        Returns:
+            ID da notificação inserida
+        """
+        query = """
+        INSERT INTO notificacoes_risco (
+            apolice_id, numero_apolice, segurado, email, telefone, canal,
+            mensagem, score_risco, nivel_risco, simulacao, status,
+            data_envio, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """
+        
+        params = (
+            apolice_id,
+            numero_apolice,
+            segurado,
+            email,
+            telefone,
+            canal,
+            mensagem,
+            score_risco,
+            nivel_risco,
+            simulacao,
+            status
+        )
+        
+        try:
+            notificacao_id = self.db.execute_command(query, params)
+            logger.info(f"Notificação inserida com ID {notificacao_id} para apólice {numero_apolice}")
+            return notificacao_id
+        except Exception as e:
+            logger.error(f"Erro ao inserir notificação para apólice {numero_apolice}: {e}")
+            raise
+    
+    def get_notificacoes_hoje(self) -> List[str]:
+        """
+        Retorna lista de números de apólices que já receberam notificação hoje
+        
+        Returns:
+            Lista de números de apólices notificadas hoje
+        """
+        query = """
+        SELECT DISTINCT numero_apolice 
+        FROM notificacoes_risco 
+        WHERE DATE(data_envio) = DATE('now')
+        """
+        
+        try:
+            results = self.db.execute_query(query)
+            return [row[0] for row in results] if results else []
+        except Exception as e:
+            logger.error(f"Erro ao buscar notificações de hoje: {e}")
+            return []
+    
+    def get_historico_notificacoes(self, numero_apolice: str = None, limite: int = 100) -> List[dict]:
+        """
+        Retorna histórico de notificações
+        
+        Args:
+            numero_apolice: Filtrar por apólice específica (opcional)
+            limite: Limite de registros a retornar
+            
+        Returns:
+            Lista de notificações
+        """
+        query = """
+        SELECT id, apolice_id, numero_apolice, segurado, email, telefone,
+               canal, mensagem, score_risco, nivel_risco, simulacao, status,
+               data_envio, created_at
+        FROM notificacoes_risco
+        """
+        
+        params = []
+        
+        if numero_apolice:
+            query += " WHERE numero_apolice = ?"
+            params.append(numero_apolice)
+        
+        query += " ORDER BY data_envio DESC LIMIT ?"
+        params.append(limite)
+        
+        try:
+            results = self.db.execute_query(query, tuple(params))
+            
+            notificacoes = []
+            for row in results:
+                notificacoes.append({
+                    'id': row[0],
+                    'apolice_id': row[1],
+                    'numero_apolice': row[2],
+                    'segurado': row[3],
+                    'email': row[4],
+                    'telefone': row[5],
+                    'canal': row[6],
+                    'mensagem': row[7],
+                    'score_risco': row[8],
+                    'nivel_risco': row[9],
+                    'simulacao': bool(row[10]),
+                    'status': row[11],
+                    'data_envio': row[12],
+                    'created_at': row[13]
+                })
+            
+            return notificacoes
+            
+        except Exception as e:
+            logger.error(f"Erro ao buscar histórico de notificações: {e}")
+            return []
+
+    def marcar_apolice_notificada(self, numero_apolice: str) -> bool:
+        """
+        Marca uma apólice como notificada (campo notificada = 1)
+        
+        Args:
+            numero_apolice: Número da apólice a ser marcada
+            
+        Returns:
+            True se a atualização foi bem-sucedida, False caso contrário
+        """
+        try:
+            query = "UPDATE apolices SET notificada = 1 WHERE numero_apolice = ?"
+            
+            affected_rows = self.db.execute_command(query, (numero_apolice,))
+            
+            if affected_rows:
+                logger.info(f"Apólice {numero_apolice} marcada como notificada")
+                return True
+            else:
+                logger.warning(f"Nenhuma apólice encontrada com número {numero_apolice}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Erro ao marcar apólice {numero_apolice} como notificada: {e}")
             return False

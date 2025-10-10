@@ -42,6 +42,11 @@ class Apolice:
     score_risco: Optional[float] = 0.0
     nivel_risco: Optional[str] = 'baixo'
     probabilidade_sinistro: Optional[float] = 0.0
+    # Campos de contato
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    # Campo de notificação
+    notificada: Optional[int] = 0
     
     def __post_init__(self):
         # Validações básicas

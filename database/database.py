@@ -216,13 +216,16 @@ class Database:
 
     # ==================== MIGRAÇÕES LEVES ====================
     def _ensure_apolices_extended_columns(self):
-        """Verifica se colunas de risco e data_inicio existem em 'apolices'; se não, adiciona.
+        """Verifica se colunas de risco, data_inicio, email, telefone e notificada existem em 'apolices'; se não, adiciona.
 
         Colunas alvo:
           - data_inicio DATE
           - score_risco DECIMAL(5,2)
           - nivel_risco VARCHAR(10)
           - probabilidade_sinistro DECIMAL(6,4)
+          - email VARCHAR(100)
+          - telefone VARCHAR(20)
+          - notificada INTEGER DEFAULT 0
         """
         try:
             existing_cols = {row['name'] for row in self.get_table_info('apolices')}
@@ -235,6 +238,12 @@ class Database:
                 alters.append("ALTER TABLE apolices ADD COLUMN nivel_risco VARCHAR(10)")
             if 'probabilidade_sinistro' not in existing_cols:
                 alters.append("ALTER TABLE apolices ADD COLUMN probabilidade_sinistro DECIMAL(6,4)")
+            if 'email' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN email VARCHAR(100)")
+            if 'telefone' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN telefone VARCHAR(20)")
+            if 'notificada' not in existing_cols:
+                alters.append("ALTER TABLE apolices ADD COLUMN notificada INTEGER DEFAULT 0")
             if not alters:
                 logger.info("Schema apolices já possui colunas estendidas")
                 return
@@ -248,6 +257,58 @@ class Database:
                 conn.commit()
         except Exception as e:
             logger.warning(f"Não foi possível validar/alterar colunas em apolices: {e}")
+
+    def ensure_notifications_table(self):
+        """Garante que a tabela de notificações existe no banco de dados"""
+        try:
+            with self.get_connection() as conn:
+                # Verificar se a tabela existe
+                cursor = conn.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='notificacoes_risco'
+                """)
+                
+                if not cursor.fetchone():
+                    # Criar tabela se não existir
+                    conn.execute("""
+                        CREATE TABLE notificacoes_risco (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            apolice_id INTEGER,
+                            numero_apolice VARCHAR(50) NOT NULL,
+                            segurado VARCHAR(200),
+                            email VARCHAR(100),
+                            telefone VARCHAR(20),
+                            canal VARCHAR(50) NOT NULL,
+                            mensagem TEXT NOT NULL,
+                            score_risco DECIMAL(5,2),
+                            nivel_risco VARCHAR(15),
+                            simulacao BOOLEAN DEFAULT 0,
+                            status VARCHAR(20) DEFAULT 'pendente',
+                            data_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    
+                    # Criar índices para performance
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_notificacoes_apolice 
+                        ON notificacoes_risco(numero_apolice)
+                    """)
+                    
+                    conn.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_notificacoes_data 
+                        ON notificacoes_risco(data_envio)
+                    """)
+                    
+                    conn.commit()
+                    logger.info("Tabela 'notificacoes_risco' criada com sucesso")
+                else:
+                    logger.debug("Tabela 'notificacoes_risco' já existe")
+                    
+        except Exception as e:
+            logger.error(f"Erro ao garantir tabela de notificações: {e}")
+            raise
 
 
 # Instância global do banco (singleton pattern)

@@ -249,7 +249,8 @@ def get_coverage_risks_data(search_filter=None, risk_filter="Todos", type_filter
             a.tipo_residencia,
             a.score_risco as score_medio_apolice,
             a.nivel_risco as nivel_apolice,
-            a.probabilidade_sinistro as prob_apolice
+            a.probabilidade_sinistro as prob_apolice,
+            a.notificada
         FROM latest_analysis la
         JOIN coberturas c ON la.cd_cobertura = c.cd_cobertura
         JOIN apolices a ON la.nr_apolice = a.numero_apolice
@@ -314,7 +315,8 @@ def get_coverage_risks_data(search_filter=None, risk_filter="Todos", type_filter
                 'tipo_residencia': row[10],
                 'score_medio_apolice': float(row[11]) if row[11] else 0,
                 'nivel_apolice': row[12] or 'baixo',
-                'prob_apolice': float(row[13]) if row[13] else 0
+                'prob_apolice': float(row[13]) if row[13] else 0,
+                'notificada': int(row[14]) if row[14] else 0
             }
             
             coverages_data.append(coverage_data)
@@ -421,16 +423,17 @@ def show_policies_at_risk():
         df['risk_level'] = df['score_cobertura'].apply(get_risk_level_emoji)
         df['valor_formatado'] = df['valor_segurado'].apply(lambda x: f"R$ {x:,.0f}")
         df['score_medio_formatado'] = df['score_medio_apolice'].apply(lambda x: f"{x:.1f}")
+        df['notificada_emoji'] = df['notificada'].apply(lambda x: "✅" if x == 1 else "")
         
         # Selecionar e renomear colunas para exibição
         display_df = df[[
             'nr_apolice', 'nome_cobertura', 'risk_level', 'score_cobertura', 
-            'score_medio_formatado', 'segurado', 'tipo_residencia', 'cep', 'valor_formatado'
+            'score_medio_formatado', 'segurado', 'tipo_residencia', 'cep', 'valor_formatado', 'notificada_emoji'
         ]].copy()
         
         display_df.columns = [
             'Nº da Apólice', 'Nome da Cobertura', 'Risco', 'Score da Cobertura',
-            'Score Médio da Apólice', 'Segurado', 'Tipo', 'CEP', 'Valor Segurado'
+            'Score Médio da Apólice', 'Segurado', 'Tipo', 'CEP', 'Valor Segurado', 'Notificada'
         ]
         
         # Configurar cores baseadas no risco da cobertura
@@ -2408,6 +2411,9 @@ def show_alert_management():
     
     policies_data = st.session_state.alert_policies_cache
     
+    # Inicializar selected_policies para evitar UnboundLocalError
+    selected_policies = []
+    
     # Resumo das apólices encontradas
     st.markdown("---")
     st.subheader("📊 Resumo da Busca")
@@ -2518,52 +2524,51 @@ def show_alert_management():
         
         st.session_state.selected_alert_policies = selected_policies
         
-    # Configuração da mensagem
-    st.markdown("#### 📝 Configuração da Mensagem")
-    st.markdown("""
+        # Configuração da mensagem
+        st.markdown("#### 📝 Configuração da Mensagem")
+        st.markdown("""
 <small>Você pode personalizar a mensagem enviada ao segurado. Variáveis disponíveis:<br>
 <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code>
 </small>
 """, unsafe_allow_html=True)
 
-    mensagem_padrao = (
-        "Olá, {segurado}!\n"
-        "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) "
-        "para o imóvel {tipo_residencia} no endereço {cep}.\n"
-        "Recomendamos atenção especial e, se desejar, entre em contato conosco para orientações.\n\n"
-        "Atenciosamente,\n"
-        "Equipe Radar de Sinistro."
-    )
-
-    mensagem_personalizada = st.text_area(
-        "Mensagem a ser enviada:",
-        value=mensagem_padrao,
-        height=120,
-        help="Use as variáveis: {segurado}, {numero_apolice}, {nivel_risco}, {score_risco}, {tipo_residencia}, {cep}"
-    )
-
-    # Pré-visualização da mensagem
-    if selected_policies:
-        st.markdown("#### 👁️ Pré-visualização")
-        preview_policy = selected_policies[0]
-        preview_row = df[df['policy_number'] == preview_policy].iloc[0]
-
-        preview_message = mensagem_personalizada.format(
-            segurado=preview_row.get('insured_name', 'Segurado'),
-            numero_apolice=preview_policy,
-            nivel_risco=preview_row['risk_level'],
-            score_risco=preview_row['risk_score'],
-            tipo_residencia=preview_row['property_type'],
-            cep=preview_row['cep']
+        mensagem_padrao = (
+            "Olá, {segurado}!\n"
+            "Identificamos que sua apólice {numero_apolice} apresenta risco {nivel_risco} ({score_risco}/100) "
+            "para o imóvel {tipo_residencia} no endereço {cep}.\n"
+            "Recomendamos atenção especial e, se desejar, entre em contato conosco para orientações.\n\n"
+            "Atenciosamente,\n"
+            "Equipe Radar de Sinistro."
         )
 
-        st.code(preview_message, language="text")
-        st.caption(f"Pré-visualização baseada na apólice: {preview_policy}")
-        
-        # Botão de envio
-        st.markdown("#### 🚀 Enviar Notificações")
-        
+        mensagem_personalizada = st.text_area(
+            "Mensagem a ser enviada:",
+            value=mensagem_padrao,
+            height=120,
+            help="Use as variáveis: {segurado}, {numero_apolice}, {nivel_risco}, {score_risco}, {tipo_residencia}, {cep}"
+        )
+
+        # Pré-visualização da mensagem
         if selected_policies:
+            st.markdown("#### 👁️ Pré-visualização")
+            preview_policy = selected_policies[0]
+            preview_row = df[df['policy_number'] == preview_policy].iloc[0]
+
+            preview_message = mensagem_personalizada.format(
+                segurado=preview_row.get('insured_name', 'Segurado'),
+                numero_apolice=preview_policy,
+                nivel_risco=preview_row['risk_level'],
+                score_risco=preview_row['risk_score'],
+                tipo_residencia=preview_row['property_type'],
+                cep=preview_row['cep']
+            )
+
+            st.code(preview_message, language="text")
+            st.caption(f"Pré-visualização baseada na apólice: {preview_policy}")
+            
+            # Botão de envio
+            st.markdown("#### 🚀 Enviar Notificações")
+            
             col1, col2 = st.columns([2, 1])
             
             with col1:
@@ -2574,7 +2579,7 @@ def show_alert_management():
                     send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map)
         else:
             st.warning("⚠️ Selecione pelo menos uma apólice para enviar notificações.")
-    
+        
     else:
         st.info("📭 Nenhuma apólice encontrada com os critérios de busca especificados.")
         st.markdown("**Sugestões:**")
@@ -2635,6 +2640,9 @@ def send_alert_notifications(selected_policies, df, mensagem_personalizada, noti
                     simulacao=True,
                     status='sucesso'
                 )
+                
+                # Marcar apólice como notificada
+                crud.marcar_apolice_notificada(policy_num)
                 
                 enviados.append(policy_num)
                 

@@ -1,52 +1,52 @@
 RELATÓRIO DE TREINAMENTO - DANOS_ELETRICOS
 ============================================================
-Data/Hora: 2025-10-09 17:37:11
+Data/Hora: 2025-10-10 14:10:20
 
 MÉTRICAS DE PERFORMANCE:
-Acurácia: 0.824
-AUC-ROC: 0.861
-Cross-Validation AUC: 0.845 ± 0.017
+Acurácia: 0.865
+AUC-ROC: 0.879
+Cross-Validation AUC: 0.855 ± 0.012
 
 RELATÓRIO DE CLASSIFICAÇÃO:
               precision    recall  f1-score   support
 
-           0       0.87      0.85      0.86       351
-           1       0.75      0.79      0.77       210
+           0       0.90      0.88      0.89       360
+           1       0.81      0.83      0.82       210
 
-    accuracy                           0.82       561
-   macro avg       0.81      0.82      0.81       561
-weighted avg       0.83      0.82      0.82       561
+    accuracy                           0.86       570
+   macro avg       0.85      0.86      0.86       570
+weighted avg       0.87      0.86      0.87       570
 
 
 MATRIZ DE CONFUSÃO:
-TN: 297, FP: 54
-FN: 45, TP: 165
+TN: 318, FP: 42
+FN: 35, TP: 175
 
 IMPORTÂNCIA DAS FEATURES:
- 1. velocidade_vento          0.3130
- 2. pressao_atmosferica       0.1737
- 3. cobertura_nuvens          0.1300
- 4. precipitacao_mm           0.1025
- 5. umidade_relativa          0.0874
- 6. temperatura_diferencial   0.0431
- 7. indice_uv                 0.0413
- 8. idade_imovel              0.0342
- 9. risco_construcao          0.0202
-10. mes                       0.0201
-11. estacao                   0.0103
-12. faixa_valor               0.0094
-13. tipo_residencia           0.0077
-14. regiao_metropolitana      0.0070
+ 1. velocidade_vento          0.3210
+ 2. pressao_atmosferica       0.1976
+ 3. cobertura_nuvens          0.1181
+ 4. precipitacao_mm           0.1056
+ 5. umidade_relativa          0.0647
+ 6. indice_uv                 0.0425
+ 7. temperatura_diferencial   0.0396
+ 8. idade_imovel              0.0358
+ 9. mes                       0.0209
+10. risco_construcao          0.0187
+11. estacao                   0.0117
+12. tipo_residencia           0.0098
+13. faixa_valor               0.0083
+14. regiao_metropolitana      0.0058
 
 ESTATÍSTICAS DOS DADOS:
-Total de amostras de teste: 561
-Classe positiva (sinistros): 210 (37.4%)
-Classe negativa (sem sinistro): 351 (62.6%)
+Total de amostras de teste: 570
+Classe positiva (sinistros): 210 (36.8%)
+Classe negativa (sem sinistro): 360 (63.2%)
 
 DISTRIBUIÇÃO DE PROBABILIDADES:
-0.0-0.1: 18 amostras
-0.1-0.3: 302 amostras
-0.3-0.5: 22 amostras
-0.5-0.7: 29 amostras
-0.7-0.9: 96 amostras
-0.9-1.0: 94 amostras
+0.0-0.1: 53 amostras
+0.1-0.3: 277 amostras
+0.3-0.5: 23 amostras
+0.5-0.7: 62 amostras
+0.7-0.9: 71 amostras
+0.9-1.0: 84 amostras

@@ -1,6 +1,6 @@
 SUMÁRIO DE TREINAMENTO - TODOS OS MODELOS
 ============================================================
-Data/Hora: 2025-10-09 17:37:15
+Data/Hora: 2025-10-10 14:10:25
 
 RESUMO GERAL:
 Total de modelos: 4
@@ -10,14 +10,14 @@ Com erro: 0
 PERFORMANCE POR MODELO:
 Cobertura            Acurácia   AUC-ROC    CV AUC          Amostras  
 ----------------------------------------------------------------------
-danos_eletricos      0.824      0.861      0.845           2243      
-vendaval             0.733      0.739      0.752           2397      
-granizo              0.795      0.838      0.843           2218      
-alagamento           0.823      0.829      0.838           2323      
+danos_eletricos      0.865      0.879      0.855           2277      
+vendaval             0.775      0.786      0.757           2399      
+granizo              0.829      0.858      0.819           2204      
+alagamento           0.810      0.837      0.834           2318      
 
 TOP 5 FEATURES MAIS IMPORTANTES (geral):
-1. velocidade_vento          0.2388
-2. pressao_atmosferica       0.1931
-3. precipitacao_mm           0.1898
-4. cobertura_nuvens          0.1187
-5. umidade_relativa          0.0940
+1. velocidade_vento          0.2383
+2. pressao_atmosferica       0.1917
+3. precipitacao_mm           0.1865
+4. cobertura_nuvens          0.1213
+5. umidade_relativa          0.0935

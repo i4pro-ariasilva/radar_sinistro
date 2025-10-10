@@ -17,13 +17,22 @@ class WeatherService:
     Estratégia: Cache -> API -> Fallback simulado
     """
     
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, *args, **kwargs):
+        """Implementação singleton para evitar múltiplas inicializações"""
+        if cls._instance is None:
+            cls._instance = super(WeatherService, cls).__new__(cls)
+        return cls._instance
+    
     def __init__(self, 
                  cache_ttl_hours: int = 1,
                  cache_db_path: str = "weather_cache.db",
                  api_timeout: int = 10,
                  api_retries: int = 3):
         """
-        Inicializa serviço de weather
+        Inicializa serviço de weather (apenas uma vez)
         
         Args:
             cache_ttl_hours: TTL do cache em horas
@@ -31,6 +40,10 @@ class WeatherService:
             api_timeout: Timeout da API em segundos
             api_retries: Número de tentativas da API
         """
+        # Evitar reinicialização múltipla
+        if self._initialized:
+            return
+            
         self.cache = WeatherCache(cache_db_path, cache_ttl_hours)
         self.client = OpenMeteoClient(api_timeout, api_retries)
         
@@ -42,7 +55,11 @@ class WeatherService:
             'errors': 0
         }
         
-        logger.info(f"WeatherService inicializado - Cache TTL: {cache_ttl_hours}h")
+        # Log apenas na primeira inicialização
+        if not hasattr(WeatherService, '_first_init_logged'):
+            logger.info(f"WeatherService inicializado - Cache TTL: {cache_ttl_hours}h")
+            WeatherService._first_init_logged = True
+        self._initialized = True
     
     def get_current_weather(self, latitude: float, longitude: float, use_cache: bool = True) -> Optional[WeatherData]:
         """

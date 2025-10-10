@@ -55,7 +55,10 @@ class FeatureEngineer:
                     cache_ttl_hours=weather_cache_hours,
                     cache_db_path="weather_cache.db"
                 )
-                logger.info("✅ WeatherService inicializado - Usando dados climáticos reais")
+                # Reduzir log verboso - só logar na primeira inicialização
+                if not hasattr(WeatherService, '_first_init_logged'):
+                    logger.info("✅ WeatherService inicializado - Usando dados climáticos reais")
+                    WeatherService._first_init_logged = True
             except Exception as e:
                 logger.warning(f"❌ Falha ao inicializar WeatherService: {e}")
                 self.use_real_weather = False

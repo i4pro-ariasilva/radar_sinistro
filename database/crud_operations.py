@@ -35,14 +35,15 @@ class CRUDOperations:
         """
         query = """
         INSERT INTO apolices (
-            numero_apolice, segurado, cep, latitude, longitude, tipo_residencia,
+            numero_apolice, segurado, cd_produto, cep, latitude, longitude, tipo_residencia,
             valor_segurado, data_contratacao, data_inicio, ativa, 
             score_risco, nivel_risco, probabilidade_sinistro, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         params = (
             apolice.numero_apolice,
             getattr(apolice, 'segurado', 'N/A'),
+            getattr(apolice, 'cd_produto', None),
             apolice.cep,
             apolice.latitude,
             apolice.longitude,
@@ -75,6 +76,8 @@ class CRUDOperations:
             return Apolice(
                 id=row['id'],
                 numero_apolice=row['numero_apolice'],
+                segurado=row['segurado'],
+                cd_produto=row['cd_produto'] if 'cd_produto' in row.keys() else None,
                 cep=row['cep'],
                 latitude=row['latitude'],
                 longitude=row['longitude'],
@@ -501,3 +504,201 @@ class CRUDOperations:
         if block:
             return False, block.reason or None, None
         return False, None, None
+
+
+    # ==================== OPERAÇÕES PARA PRODUTOS ====================
+    
+    def insert_produto(self, produto) -> int:
+        """Insere um novo produto"""
+        from .models import Produto
+        query = """
+        INSERT INTO produtos (cd_produto, cd_ramo, nm_produto, dt_criacao, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        params = (
+            produto.cd_produto,
+            produto.cd_ramo,
+            produto.nm_produto,
+            produto.dt_criacao,
+            produto.created_at
+        )
+        return self.db.execute_command(query, params)
+    
+    def get_produto_by_codigo(self, cd_produto: int):
+        """Busca produto por código"""
+        from .models import Produto
+        query = "SELECT * FROM produtos WHERE cd_produto = ?"
+        rows = self.db.execute_query(query, (cd_produto,))
+        if rows:
+            r = rows[0]
+            return Produto(
+                cd_produto=r['cd_produto'],
+                cd_ramo=r['cd_ramo'],
+                nm_produto=r['nm_produto'],
+                dt_criacao=datetime.fromisoformat(r['dt_criacao']) if r['dt_criacao'] else None,
+                created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+                updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None
+            )
+        return None
+    
+    def get_produtos_by_ramo(self, cd_ramo: int) -> List:
+        """Busca produtos por ramo"""
+        from .models import Produto
+        query = "SELECT * FROM produtos WHERE cd_ramo = ? ORDER BY nm_produto"
+        rows = self.db.execute_query(query, (cd_ramo,))
+        produtos = []
+        for r in rows:
+            produtos.append(Produto(
+                cd_produto=r['cd_produto'],
+                cd_ramo=r['cd_ramo'],
+                nm_produto=r['nm_produto'],
+                dt_criacao=datetime.fromisoformat(r['dt_criacao']) if r['dt_criacao'] else None,
+                created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+                updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None
+            ))
+        return produtos
+
+    # ==================== OPERAÇÕES PARA COBERTURAS ====================
+    
+    def insert_cobertura(self, cobertura) -> int:
+        """Insere uma nova cobertura"""
+        from .models import Cobertura
+        query = """
+        INSERT INTO coberturas (cd_cobertura, cd_produto, nm_cobertura, dv_basica, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        params = (
+            cobertura.cd_cobertura,
+            cobertura.cd_produto,
+            cobertura.nm_cobertura,
+            cobertura.dv_basica,
+            cobertura.created_at
+        )
+        return self.db.execute_command(query, params)
+    
+    def get_cobertura_by_codigo(self, cd_cobertura: int):
+        """Busca cobertura por código"""
+        from .models import Cobertura
+        query = "SELECT * FROM coberturas WHERE cd_cobertura = ?"
+        rows = self.db.execute_query(query, (cd_cobertura,))
+        if rows:
+            r = rows[0]
+            return Cobertura(
+                cd_cobertura=r['cd_cobertura'],
+                cd_produto=r['cd_produto'],
+                nm_cobertura=r['nm_cobertura'],
+                dv_basica=bool(r['dv_basica']),
+                created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+                updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None
+            )
+        return None
+    
+    def get_coberturas_by_produto(self, cd_produto: int) -> List:
+        """Busca coberturas por produto"""
+        from .models import Cobertura
+        query = "SELECT * FROM coberturas WHERE cd_produto = ? ORDER BY dv_basica DESC, nm_cobertura"
+        rows = self.db.execute_query(query, (cd_produto,))
+        coberturas = []
+        for r in rows:
+            coberturas.append(Cobertura(
+                cd_cobertura=r['cd_cobertura'],
+                cd_produto=r['cd_produto'],
+                nm_cobertura=r['nm_cobertura'],
+                dv_basica=bool(r['dv_basica']),
+                created_at=datetime.fromisoformat(r['created_at']) if r['created_at'] else None,
+                updated_at=datetime.fromisoformat(r['updated_at']) if r['updated_at'] else None
+            ))
+        return coberturas
+
+    # ==================== OPERAÇÕES PARA APÓLICE-COBERTURA ====================
+    
+    def insert_apolice_cobertura(self, apolice_cobertura) -> int:
+        """Insere uma nova relação apólice-cobertura"""
+        from .models import ApoliceCobertura
+        query = """
+        INSERT INTO apolice_cobertura (cd_cobertura, cd_produto, nr_apolice, dt_inclusao, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        """
+        params = (
+            apolice_cobertura.cd_cobertura,
+            apolice_cobertura.cd_produto,
+            apolice_cobertura.nr_apolice,
+            apolice_cobertura.dt_inclusao,
+            apolice_cobertura.created_at
+        )
+        return self.db.execute_command(query, params)
+    
+    def get_coberturas_by_apolice(self, nr_apolice: str) -> List:
+        """Busca coberturas de uma apólice"""
+        from .models import ApoliceCobertura
+        query = """
+        SELECT ac.*, c.nm_cobertura, c.dv_basica, p.nm_produto 
+        FROM apolice_cobertura ac
+        JOIN coberturas c ON ac.cd_cobertura = c.cd_cobertura
+        JOIN produtos p ON ac.cd_produto = p.cd_produto
+        WHERE ac.nr_apolice = ?
+        ORDER BY c.dv_basica DESC, c.nm_cobertura
+        """
+        rows = self.db.execute_query(query, (nr_apolice,))
+        resultado = []
+        for r in rows:
+            resultado.append({
+                'id': r['id'],
+                'cd_cobertura': r['cd_cobertura'],
+                'cd_produto': r['cd_produto'],
+                'nr_apolice': r['nr_apolice'],
+                'dt_inclusao': r['dt_inclusao'],
+                'nm_cobertura': r['nm_cobertura'],
+                'dv_basica': bool(r['dv_basica']),
+                'nm_produto': r['nm_produto']
+            })
+        return resultado
+    
+    def remove_apolice_cobertura(self, nr_apolice: str, cd_cobertura: int) -> bool:
+        """Remove uma cobertura de uma apólice"""
+        query = "DELETE FROM apolice_cobertura WHERE nr_apolice = ? AND cd_cobertura = ?"
+        affected = self.db.execute_command(query, (nr_apolice, cd_cobertura))
+        return affected > 0
+    
+    def remove_all_apolice_coberturas(self, nr_apolice: str) -> bool:
+        """Remove todas as coberturas de uma apólice"""
+        query = "DELETE FROM apolice_cobertura WHERE nr_apolice = ?"
+        try:
+            self.db.execute_command(query, (nr_apolice,))
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao remover coberturas da apólice {nr_apolice}: {e}")
+            return False
+    
+    def insert_multiple_apolice_coberturas(self, nr_apolice: str, cd_produto: int, cd_coberturas: List[int], dt_inclusao: str = None) -> bool:
+        """Insere múltiplas coberturas para uma apólice"""
+        from .models import ApoliceCobertura
+        from datetime import datetime
+        
+        if not cd_coberturas:
+            return True  # Nada para inserir
+            
+        if dt_inclusao is None:
+            dt_inclusao = datetime.now().strftime('%Y-%m-%d')
+        
+        try:
+            # Remove coberturas existentes primeiro
+            self.remove_all_apolice_coberturas(nr_apolice)
+            
+            # Insere as novas coberturas
+            for cd_cobertura in cd_coberturas:
+                apolice_cobertura = ApoliceCobertura(
+                    cd_cobertura=cd_cobertura,
+                    cd_produto=cd_produto,
+                    nr_apolice=nr_apolice,
+                    dt_inclusao=dt_inclusao,
+                    created_at=datetime.now()
+                )
+                self.insert_apolice_cobertura(apolice_cobertura)
+            
+            logger.info(f"Inseridas {len(cd_coberturas)} coberturas para apólice {nr_apolice}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Erro ao inserir coberturas para apólice {nr_apolice}: {e}")
+            return False

@@ -1,0 +1,7 @@
+# Dependências mínimas da API - Versões estáveis
+fastapi
+uvicorn
+python-multipart
+
+# Nota: Pydantic será instalado automaticamente como dependência do FastAPI
+# Dependências já existentes no projeto: pandas, numpy, sqlite3, streamlit

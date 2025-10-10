@@ -6,7 +6,8 @@ from .database import Database, get_database
 from .models import (
     Apolice, SinistroHistorico, PrevisaoRisco, DadoClimatico,
     ApoliceAtiva, PrevisaoRecente, TipoResidencia, NivelRisco,
-    determinar_nivel_risco, validar_cep, normalizar_cep
+    determinar_nivel_risco, validar_cep, normalizar_cep,
+    Produto, Cobertura, ApoliceCobertura, RegionBlock
 )
 from .crud_operations import CRUDOperations
 from .sample_data_generator import SampleDataGenerator
@@ -16,5 +17,6 @@ __all__ = [
     'Apolice', 'SinistroHistorico', 'PrevisaoRisco', 'DadoClimatico',
     'ApoliceAtiva', 'PrevisaoRecente', 'TipoResidencia', 'NivelRisco',
     'determinar_nivel_risco', 'validar_cep', 'normalizar_cep',
+    'Produto', 'Cobertura', 'ApoliceCobertura', 'RegionBlock',
     'CRUDOperations', 'SampleDataGenerator'
 ]

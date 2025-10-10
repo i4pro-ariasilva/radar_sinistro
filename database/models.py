@@ -30,6 +30,7 @@ class Apolice:
     tipo_residencia: str
     valor_segurado: float
     data_contratacao: datetime
+    cd_produto: Optional[int] = None  # código do produto
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     ativa: bool = True
@@ -210,3 +211,68 @@ def normalizar_cep(cep: str) -> str:
     if len(cep_limpo) == 8:
         return f"{cep_limpo[:5]}-{cep_limpo[5:]}"
     raise ValueError("CEP inválido")
+
+
+# ==================== NOVOS MODELOS: PRODUTOS E COBERTURAS ====================
+
+@dataclass
+class Produto:
+    """Modelo para produtos de seguro"""
+    cd_produto: int
+    cd_ramo: int
+    nm_produto: str
+    dt_criacao: datetime
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        if not self.nm_produto or len(self.nm_produto.strip()) < 3:
+            raise ValueError("Nome do produto é obrigatório e deve ter pelo menos 3 caracteres")
+        
+        if self.cd_produto <= 0:
+            raise ValueError("Código do produto deve ser maior que zero")
+            
+        if self.cd_ramo <= 0:
+            raise ValueError("Código do ramo deve ser maior que zero")
+
+
+@dataclass
+class Cobertura:
+    """Modelo para coberturas de seguro"""
+    cd_cobertura: int
+    cd_produto: int
+    nm_cobertura: str
+    dv_basica: bool = False  # False = adicional, True = básica
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    updated_at: Optional[datetime] = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        if not self.nm_cobertura or len(self.nm_cobertura.strip()) < 3:
+            raise ValueError("Nome da cobertura é obrigatório e deve ter pelo menos 3 caracteres")
+        
+        if self.cd_cobertura <= 0:
+            raise ValueError("Código da cobertura deve ser maior que zero")
+            
+        if self.cd_produto <= 0:
+            raise ValueError("Código do produto deve ser maior que zero")
+
+
+@dataclass
+class ApoliceCobertura:
+    """Modelo para relacionamento entre apólice e cobertura"""
+    cd_cobertura: int
+    cd_produto: int
+    nr_apolice: str
+    dt_inclusao: datetime
+    id: Optional[int] = None
+    created_at: Optional[datetime] = field(default_factory=datetime.now)
+    
+    def __post_init__(self):
+        if not self.nr_apolice or len(self.nr_apolice.strip()) < 3:
+            raise ValueError("Número da apólice é obrigatório")
+        
+        if self.cd_cobertura <= 0:
+            raise ValueError("Código da cobertura deve ser maior que zero")
+            
+        if self.cd_produto <= 0:
+            raise ValueError("Código do produto deve ser maior que zero")

@@ -12,6 +12,10 @@ xgboost>=1.7.0
 # APIs e Web requests
 requests>=2.31.0
 
+# Manipulação de arquivos Excel
+openpyxl>=3.1.0
+xlsxwriter>=3.2.0
+
 # Visualização
 matplotlib>=3.7.0
 seaborn>=0.12.0

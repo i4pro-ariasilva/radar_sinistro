@@ -1,0 +1,4 @@
+numero_apolice,segurado,cep,valor_segurado,data_inicio,tipo_residencia
+POL-2024-000001,João Silva Santos,01234567,300000.0,2024-10-07,Casa
+POL-2024-000002,Maria Oliveira Costa,89012345,450000.0,2024-10-07,Apartamento
+POL-2024-000003,Pedro Henrique Ferreira,13579024,180000.0,2024-10-07,Sobrado

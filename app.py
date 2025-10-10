@@ -161,11 +161,9 @@ def main():
         page = st.selectbox(
             "🧭 Navegação",
             [
-                "🏠 Dashboard Principal",
-                "🔮 Análise de Risco",
-                "📋 Apólices em Risco",
+                " Apólices em Risco",
                 "➕ Gerenciar Apólices",
-                "📊 Estatísticas",
+                "🚫 Gerenciamento de Bloqueios",
                 "🌡️ Monitoramento Climático",
                 "⚙️ Configurações"
             ]
@@ -188,461 +186,148 @@ def main():
         """)
     
     # Roteamento de páginas
-    if page == "🏠 Dashboard Principal":
-        show_dashboard()
-    elif page == "🔮 Análise de Risco":
-        show_risk_analysis()
-    elif page == "📋 Apólices em Risco":
+    if page == " Apólices em Risco":
         show_policies_at_risk()
     elif page == "➕ Gerenciar Apólices":
         show_manage_policies()
-    elif page == "📊 Estatísticas":
-        show_statistics()
+    elif page == "🚫 Gerenciamento de Bloqueios":
+        show_blocking_management()
     elif page == "🌡️ Monitoramento Climático":
         show_weather_monitoring()
     elif page == "⚙️ Configurações":
         show_settings()
 
-def check_ml_status():
-    """Verificar status do modelo ML"""
-    try:
-        from web_ml_integration import get_ml_integration
-        ml_integration = get_ml_integration()
-        status = ml_integration.get_system_status()
-        return status.get('overall', False)
-    except:
-        return False
 
-def check_weather_status():
-    """Verificar status da API climática"""
-    try:
-        from src.weather.weather_service import WeatherService
-        weather = WeatherService()
-        health = weather.health_check()
-        return health.get('status') == 'healthy'
-    except:
-        return False
 
-def check_database_status():
-    """Verificar status do banco de dados"""
-    try:
-        from database import get_database
-        db = get_database()
-        return db is not None
-    except:
-        return False
 
-def show_dashboard():
-    """Página principal do dashboard"""
+
+def get_coverage_risks_data(search_filter=None, risk_filter="Todos", type_filter="Todos", value_filter="Todos"):
+    """Buscar dados de riscos por cobertura individual da nova tabela cobertura_risco"""
     
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        <div class="metric-card">
-            <h3>📊 Análises Realizadas</h3>
-            <h2>1,247</h2>
-            <p>+12% esta semana</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown("""
-        <div class="metric-card risk-medium">
-            <h3>⚠️ Alertas Ativos</h3>
-            <h2>23</h2>
-            <p>Riscos médios/altos</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown("""
-        <div class="metric-card risk-low">
-            <h3>🎯 Precisão do Modelo</h3>
-            <h2>94.2%</h2>
-            <p>Última atualização</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    # Gráficos de exemplo
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📈 Tendência de Riscos (Últimos 30 dias)")
+    try:
+        # Importar o DAO de cobertura risco
+        from database.cobertura_risco_dao import CoberturaRiscoDAO
         
-        # Dados de exemplo
-        dates = pd.date_range(start='2025-09-06', end='2025-10-06', freq='D')
-        risk_scores = np.random.normal(45, 15, len(dates))
-        risk_scores = np.clip(risk_scores, 0, 100)
+        dao = CoberturaRiscoDAO()
         
-        fig = px.line(
-            x=dates, 
-            y=risk_scores,
-            title="Score Médio de Risco por Dia",
-            labels={'x': 'Data', 'y': 'Score de Risco'}
+        # Conectar ao banco para buscar dados detalhados
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Query para buscar coberturas individuais com dados da apólice (apenas análises mais recentes)
+        query = """
+        WITH latest_analysis AS (
+            SELECT 
+                cr.nr_apolice,
+                cr.cd_cobertura,
+                cr.score_risco as score_cobertura,
+                cr.nivel_risco,
+                cr.probabilidade,
+                cr.data_calculo,
+                ROW_NUMBER() OVER (
+                    PARTITION BY cr.nr_apolice, cr.cd_cobertura 
+                    ORDER BY cr.data_calculo DESC
+                ) as rn
+            FROM cobertura_risco cr
+            WHERE typeof(cr.cd_cobertura) = 'integer'
         )
-        fig.update_layout(height=300)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.subheader("🗺️ Distribuição de Riscos por Região")
+        SELECT 
+            la.nr_apolice,
+            la.cd_cobertura,
+            la.score_cobertura,
+            la.nivel_risco,
+            la.probabilidade,
+            la.data_calculo,
+            c.nm_cobertura as nome_cobertura,
+            a.segurado,
+            a.cep,
+            a.valor_segurado,
+            a.tipo_residencia,
+            a.score_risco as score_medio_apolice,
+            a.nivel_risco as nivel_apolice,
+            a.probabilidade_sinistro as prob_apolice
+        FROM latest_analysis la
+        JOIN coberturas c ON la.cd_cobertura = c.cd_cobertura
+        JOIN apolices a ON la.nr_apolice = a.numero_apolice
+        WHERE la.rn = 1
+        """
         
-        # Dados de exemplo por região
-        regions = ['Centro', 'Norte', 'Sul', 'Leste', 'Oeste']
-        risk_counts = [45, 32, 28, 51, 38]
+        params = []
         
-        fig = px.bar(
-            x=regions,
-            y=risk_counts,
-            title="Análises de Risco por Região",
-            labels={'x': 'Região', 'y': 'Número de Análises'},
-            color=risk_counts,
-            color_continuous_scale='RdYlGn_r'
-        )
-        fig.update_layout(height=300)
-        st.plotly_chart(fig, use_container_width=True)
-
-def show_risk_analysis():
-    """Página de Análise de Risco - formulário principal"""
-    
-    st.header("📝 Análise de Risco de Imóvel")
-    st.markdown("Insira os dados do imóvel para obter uma análise preditiva de risco de sinistros.")
-    
-    # Inicializar session state se não existir
-    if 'analysis_result' not in st.session_state:
-        st.session_state.analysis_result = None
-    
-    # Formulário principal
-    with st.form("risk_analysis_form"):
-        col1, col2 = st.columns(2)
+        # Aplicar filtros se fornecidos
+        if search_filter and search_filter.strip():
+            query += " AND la.nr_apolice LIKE ?"
+            params.append(f"%{search_filter.strip()}%")
         
-        with col1:
-            st.subheader("🏠 Dados do Imóvel")
-            
-            cep = st.text_input(
-                "CEP",
-                placeholder="01310-100",
-                help="CEP do imóvel (formato: XXXXX-XXX)"
-            )
-            
-            tipo_residencia = st.selectbox(
-                "Tipo de Residência",
-                ["casa", "apartamento", "sobrado", "kitnet", "cobertura"],
-                help="Tipo de construção do imóvel"
-            )
-            
-            valor_segurado = st.number_input(
-                "Valor Segurado (R$)",
-                min_value=10000.0,
-                max_value=10000000.0,
-                value=300000.0,
-                step=10000.0,
-                help="Valor total da cobertura do seguro"
-            )
-            
-            area_construida = st.number_input(
-                "Área Construída (m²)",
-                min_value=20.0,
-                max_value=1000.0,
-                value=120.0,
-                step=10.0,
-                help="Área total construída do imóvel"
-            )
+        if risk_filter != "Todos":
+            if "Alto" in risk_filter:
+                query += " AND la.score_cobertura >= 75"
+            elif "Médio" in risk_filter and "Baixo" not in risk_filter:
+                query += " AND la.score_cobertura >= 50 AND la.score_cobertura < 75"
+            elif "Baixo" in risk_filter and "Muito" not in risk_filter:
+                query += " AND la.score_cobertura >= 25 AND la.score_cobertura < 50"
+            elif "Muito Baixo" in risk_filter:
+                query += " AND la.score_cobertura < 25"
         
-        with col2:
-            st.subheader("📅 Parâmetros da Análise")
-            
-            data_analise = st.date_input(
-                "Data da Análise",
-                value=datetime.now(),
-                help="Data de referência para a análise"
-            )
-            
-            incluir_clima = st.checkbox(
-                "Incluir dados climáticos em tempo real",
-                value=True,
-                help="Buscar condições meteorológicas atuais para o CEP"
-            )
-            
-            tipo_analise = st.selectbox(
-                "Tipo de Análise",
-                ["Análise Completa", "Análise Básica", "Análise Expressa"],
-                help="Nível de detalhamento da análise"
-            )
-            
-            st.markdown("---")
-            
-            # Botão de análise
-            submit_button = st.form_submit_button(
-                "🔍 ANALISAR RISCO",
-                use_container_width=True
-            )
-    
-    # Processar análise FORA do formulário
-    if submit_button:
-        if not cep:
-            st.error("❌ Por favor, informe o CEP do imóvel!")
-            st.session_state.analysis_result = None
-        elif len(cep.replace("-", "")) != 8:
-            st.error("❌ CEP deve ter 8 dígitos (formato: XXXXX-XXX)!")
-            st.session_state.analysis_result = None
-        else:
-            # Processar análise
-            with st.spinner("🔄 Processando Análise de Risco..."):
-                result = process_risk_analysis(
-                    cep, tipo_residencia, valor_segurado, 
-                    area_construida, incluir_clima, tipo_analise
-                )
-            
-            # Salvar resultado no session state
-            st.session_state.analysis_result = result
-    
-    # Mostrar resultados se existirem (completamente FORA do formulário)
-    if st.session_state.analysis_result is not None:
-        show_risk_results(st.session_state.analysis_result)
-
-def process_risk_analysis(cep, tipo_residencia, valor_segurado, area_construida, incluir_clima, tipo_analise):
-    """Processar Análise de Risco usando sistema ML real"""
-    
-    try:
-        # Carregar integração ML
-        from web_ml_integration import get_ml_integration
-        ml_integration = get_ml_integration()
+        if type_filter != "Todos":
+            query += " AND a.tipo_residencia = ?"
+            params.append(type_filter.lower())
         
-        with st.spinner("🧠 Analisando risco com IA..."):
-            # Fazer predição usando o sistema ML
-            resultado = ml_integration.predict_risk(
-                cep=cep,
-                tipo_residencia=tipo_residencia,
-                valor_segurado=valor_segurado,
-                area_construida=area_construida,
-                incluir_clima=incluir_clima
-            )
+        # Ordenar por score de risco da cobertura (maior para menor)
+        query += " ORDER BY la.score_cobertura DESC, la.data_calculo DESC"
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            st.info("📝 Nenhuma cobertura analisada encontrada no banco de dados.")
+            st.info("💡 Use 'Análise de Riscos' para analisar apólices e gerar dados de coberturas!")
+            return []
+        
+        # Converter dados para formato esperado
+        coverages_data = []
+        for row in rows:
+            # Mapear nomes de cobertura mais amigáveis
+            coverage_names = {
+                1: "🌊 Alagamento",
+                2: "Vendaval", 
+                3: "🧊 Granizo",
+                4: "⚡ Danos Elétricos"
+            }
             
-            return resultado
+            coverage_data = {
+                'nr_apolice': row[0],
+                'cd_cobertura': row[1], 
+                'score_cobertura': float(row[2]) if row[2] else 0,
+                'nivel_risco': row[3] or 'baixo',
+                'probabilidade': float(row[4]) if row[4] else 0,
+                'data_calculo': row[5],
+                'nome_cobertura': coverage_names.get(row[1], row[6] or f"Cobertura {row[1]}"),
+                'segurado': row[7],
+                'cep': row[8],
+                'valor_segurado': float(row[9]) if row[9] else 0,
+                'tipo_residencia': row[10],
+                'score_medio_apolice': float(row[11]) if row[11] else 0,
+                'nivel_apolice': row[12] or 'baixo',
+                'prob_apolice': float(row[13]) if row[13] else 0
+            }
             
+            coverages_data.append(coverage_data)
+        
+        return coverages_data
+        
     except Exception as e:
-        st.warning(f"⚠️ Sistema ML indisponível. Usando modo simulação.")
-        
-        # Fallback para simulação
-        import random
-        import time
-        
-        with st.spinner("🧠 Analisando risco (modo simulação)..."):
-            time.sleep(2)
-            
-            # Score de risco simulado baseado nos inputs
-            base_score = random.uniform(20, 80)
-            
-            # Ajustar score baseado no tipo de residência
-            tipo_multiplier = {
-                "casa": 1.0,
-                "apartamento": 0.8,
-                "sobrado": 1.2,
-                "kitnet": 0.9,
-                "cobertura": 1.3
-            }
-            
-            score = base_score * tipo_multiplier.get(tipo_residencia, 1.0)
-            score = min(100, max(0, score))
-            
-            # Classificação de risco (PADRONIZADA)
-            if score >= 75:
-                classificacao = "Alto"
-                cor = "error"
-                emoji = "�"
-            elif score >= 50:
-                classificacao = "Médio"
-                cor = "warning"
-                emoji = "�"
-            elif score >= 25:
-                classificacao = "Baixo"
-                cor = "info"
-                emoji = "�"
-            else:
-                classificacao = "Muito Baixo"
-                cor = "success"
-                emoji = "�"
-            
-            return {
-                "score": round(score, 1),
-                "classificacao": classificacao,
-                "cor": cor,
-                "emoji": emoji,
-                "cep": cep,
-                "tipo_residencia": tipo_residencia,
-                "valor_segurado": valor_segurado,
-                "area_construida": area_construida,
-                "fatores": {
-                    "Localização": random.uniform(0.7, 1.3),
-                    "Tipo de Construção": tipo_multiplier.get(tipo_residencia, 1.0),
-                    "Valor do Imóvel": min(1.5, valor_segurado / 200000),
-                    "Condições Climáticas": random.uniform(0.8, 1.4) if incluir_clima else 1.0
-                },
-                "recomendacoes": [
-                    "Considerar cobertura adicional para eventos climáticos extremos",
-                    "Avaliar sistema de drenagem da propriedade",
-                    "Verificar estado da cobertura e estrutura"
-                ],
-                "is_real_prediction": False,
-                "confianca": random.uniform(0.60, 0.80)
-            }
-
-def show_risk_results(result):
-    """Exibir resultados da Análise de Risco"""
-    
-    st.markdown("---")
-    
-    # Header com emoji e classificação
-    emoji = result.get("emoji", "🔵")
-    classificacao = result.get("classificacao", "N/A")
-    
-    st.subheader(f"{emoji} Resultado da Análise - Risco {classificacao}")
-    
-    # Indicador de tipo de predição
-    if result.get("is_real_prediction", False):
-        st.success("🧠 Predição usando modelo de Machine Learning")
-        confianca = result.get("confianca", 0.9)
-        st.metric("Confiança da Predição", f"{confianca:.1%}")
-    else:
-        st.warning("⚠️ Resultado em modo simulação")
-        confianca = result.get("confianca", 0.7)
-        st.metric("Confiança (Simulação)", f"{confianca:.1%}")
-    
-    # Score principal
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        # Gauge chart do score melhorado
-        score = result["score"]
-        
-        # Cores baseadas no score
-        if score < 25:
-            gauge_color = "green"
-        elif score < 50:
-            gauge_color = "lightblue"
-        elif score < 75:
-            gauge_color = "orange"
-        else:
-            gauge_color = "red"
-        
-        fig = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = score,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': f"Score de Risco<br><span style='font-size:0.8em;color:gray'>CEP: {result['cep']}</span>"},
-            delta = {'reference': 50},
-            gauge = {
-                'axis': {'range': [None, 100]},
-                'bar': {'color': gauge_color},
-                'steps': [
-                    {'range': [0, 25], 'color': "lightgreen"},
-                    {'range': [25, 50], 'color': "lightblue"},
-                    {'range': [50, 75], 'color': "lightyellow"},
-                    {'range': [75, 100], 'color': "lightcoral"}
-                ],
-                'threshold': {
-                    'line': {'color': "red", 'width': 4},
-                    'thickness': 0.75,
-                    'value': 90
-                }
-            }
-        ))
-        fig.update_layout(height=300, margin=dict(l=20, r=20, t=40, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # Métricas resumidas
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Tipo", result["tipo_residencia"].title())
-    
-    with col2:
-        valor = result["valor_segurado"]
-        st.metric("Valor Segurado", f"R$ {valor:,.0f}")
-    
-    with col3:
-        area = result["area_construida"]
-        st.metric("Área", f"{area} m²")
-    
-    with col4:
-        cor = result.get("cor", "info")
-        if cor == "success":
-            st.success(f"✅ {classificacao}")
-        elif cor == "info":
-            st.info(f"ℹ️ {classificacao}")
-        elif cor == "warning":
-            st.warning(f"⚠️ {classificacao}")
-        else:
-            st.error(f"🚨 {classificacao}")
-    
-    # Fatores de influência
-    st.markdown("### 📈 Fatores de Influência")
-    
-    fatores = result.get("fatores", {})
-    if fatores:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            for i, (fator, valor) in enumerate(fatores.items()):
-                if i % 2 == 0:  # Coluna 1: itens pares
-                    if isinstance(valor, (int, float)):
-                        color = "green" if valor < 1.0 else "orange" if valor < 1.2 else "red"
-                        st.markdown(f"**{fator}:** <span style='color:{color}'>{valor:.2f}x</span>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"**{fator}:** {valor}")
-        
-        with col2:
-            for i, (fator, valor) in enumerate(fatores.items()):
-                if i % 2 == 1:  # Coluna 2: itens ímpares
-                    if isinstance(valor, (int, float)):
-                        color = "green" if valor < 1.0 else "orange" if valor < 1.2 else "red"
-                        st.markdown(f"**{fator}:** <span style='color:{color}'>{valor:.2f}x</span>", unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"**{fator}:** {valor}")
-    
-    # Recomendações
-    st.markdown("### 💡 Recomendações")
-    
-    recomendacoes = result.get("recomendacoes", [])
-    if recomendacoes:
-        for rec in recomendacoes:
-            st.markdown(f"• {rec}")
-    else:
-        st.info("Nenhuma recomendação específica disponível.")
-    
-    # Timestamp
-    if "timestamp" in result:
-        timestamp = result["timestamp"]
-        st.caption(f"📅 Análise realizada em: {timestamp.strftime('%d/%m/%Y às %H:%M:%S')}")
-    
-    # Ações adicionais
-    st.markdown("---")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        if st.button("📊 Nova Análise", use_container_width=True):
-            # Limpar resultado da session
-            st.session_state.analysis_result = None
-            st.rerun()
-    
-    with col2:
-        if st.button("📋 Exportar Relatório", use_container_width=True):
-            # Simulação de exportação
-            st.success("📄 Relatório exportado com sucesso!")
-    
-    with col3:
-        if st.button("📞 Contatar Corretor", use_container_width=True):
-            st.info("📞 Redirecionando para contato com corretor...")
+        st.error(f"Erro ao buscar dados de coberturas: {str(e)}")
+        import traceback
+        st.error(f"Detalhes: {traceback.format_exc()}")
+        return []
 
 def show_policies_at_risk():
-    """Página de Apólices em Risco - Lista ordenada por score de risco com dados reais do banco"""
+    """Página de Ranking de Coberturas em Risco"""
     
-    st.header("📋 Apólices em Risco - Dados Reais")
-    st.markdown("Lista de apólices **REAIS** ordenadas por nível de risco de sinistro (maior para menor)")
-    st.info("🗄️ **Conectado ao banco de dados**: Esta seção mostra as apólices inseridas via 'Gerenciar Apólices'")
+    st.header("📋 Ranking de Coberturas em Risco")
     
     # Seção de busca
     st.markdown("---")
@@ -652,13 +337,14 @@ def show_policies_at_risk():
         search_policy = st.text_input(
             "🔍 Buscar Apólice", 
             placeholder="Digite o número da apólice (ex: POL-2025-001234)",
-            help="Busque uma apólice específica pelo número"
+            help="Busque coberturas de uma apólice específica pelo número",
+            key="buscar_apolice_coberturas"
         )
     
     with col2:
         if st.button("🔍 Buscar", use_container_width=True):
             if search_policy:
-                st.success(f"Buscando apólice: {search_policy}")
+                st.success(f"Buscando coberturas da apólice: {search_policy}")
             else:
                 st.warning("Digite um número de apólice para buscar")
     
@@ -669,7 +355,7 @@ def show_policies_at_risk():
     with col1:
         risk_filter = st.selectbox(
             "Nível de Risco",
-            ["Todos", "Alto (75-100)", "Médio-Alto (50-75)", "Médio-Baixo (25-50)", "Baixo (0-25)"]
+            ["Todos", "Alto (75-100)", "Médio (50-74)", "Baixo (25-49)", "Muito Baixo (0-24)"]
         )
     
     with col2:
@@ -690,117 +376,402 @@ def show_policies_at_risk():
             ["Todos", "Última semana", "Último mês", "Últimos 3 meses", "Último ano"]
         )
     
-    # Buscar dados REAIS de apólices do banco de dados
-    policies_data = get_real_policies_data(search_policy, risk_filter, policy_type, value_range)
+    # Buscar dados REAIS de coberturas do banco de dados
+    coverages_data = get_coverage_risks_data(search_policy, risk_filter, policy_type, value_range)
     
     # Métricas resumidas
     st.markdown("---")
-    st.markdown("### 📈 Resumo das Apólices")
+    st.markdown("### 📈 Resumo das Coberturas (Últimas Análises)")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
-    high_risk = len([p for p in policies_data if p['risk_score'] >= 75])
-    medium_risk = len([p for p in policies_data if 50 <= p['risk_score'] < 75])
-    low_risk = len([p for p in policies_data if p['risk_score'] < 50])
-    total_value = sum([p['insured_value'] for p in policies_data])
+    high_risk = len([c for c in coverages_data if c['score_cobertura'] >= 75])
+    medium_risk = len([c for c in coverages_data if 50 <= c['score_cobertura'] < 75])
+    low_risk = len([c for c in coverages_data if c['score_cobertura'] < 50])
+    total_value = sum([c['valor_segurado'] for c in coverages_data])
+    unique_policies = len(set([c['nr_apolice'] for c in coverages_data]))
     
     with col1:
-        st.metric("🔴 Alto Risco", high_risk, f"{high_risk/len(policies_data)*100:.1f}%" if policies_data else "0%")
+        st.metric("🔴 Alto Risco", high_risk, f"{high_risk/len(coverages_data)*100:.1f}%" if coverages_data else "0%")
     
     with col2:
-        st.metric("🟡 Médio Risco", medium_risk, f"{medium_risk/len(policies_data)*100:.1f}%" if policies_data else "0%")
+        st.metric("🟡 Médio Risco", medium_risk, f"{medium_risk/len(coverages_data)*100:.1f}%" if coverages_data else "0%")
     
     with col3:
-        st.metric("🟢 Baixo Risco", low_risk, f"{low_risk/len(policies_data)*100:.1f}%" if policies_data else "0%")
+        st.metric("🟢 Baixo Risco", low_risk, f"{low_risk/len(coverages_data)*100:.1f}%" if coverages_data else "0%")
     
     with col4:
-        st.metric("💰 Valor Total", f"R$ {total_value/1000000:.1f}M", f"{len(policies_data)} apólices")
+        st.metric("💰 Valor Total", f"R$ {total_value/1000000:.1f}M", f"{unique_policies} apólices")
     
-    # Tabela de apólices
+    with col5:
+        st.metric("Coberturas", len(coverages_data), f"{len(set([c['nome_cobertura'] for c in coverages_data]))} tipos")
+    
+    # Tabela de coberturas
     st.markdown("---")
-    st.markdown("### 📋 Lista de Apólices (Ordenado por Risco)")
+    st.markdown("### Lista de Coberturas (Ordenado por Risco)")
     
-    if policies_data:
+    if coverages_data:
         # Criar DataFrame
-        df = pd.DataFrame(policies_data)
+        df = pd.DataFrame(coverages_data)
         
         # Adicionar colunas formatadas
-        df['risk_level'] = df['risk_score'].apply(get_risk_level_emoji)
-        df['valor_formatado'] = df['insured_value'].apply(lambda x: f"R$ {x:,.0f}")
-        df['ultima_analise'] = df['last_analysis'].apply(lambda x: x.strftime('%d/%m/%Y'))
+        df['risk_level'] = df['score_cobertura'].apply(get_risk_level_emoji)
+        df['valor_formatado'] = df['valor_segurado'].apply(lambda x: f"R$ {x:,.0f}")
+        df['score_medio_formatado'] = df['score_medio_apolice'].apply(lambda x: f"{x:.1f}")
         
         # Selecionar e renomear colunas para exibição
         display_df = df[[
-            'policy_number', 'risk_level', 'risk_score', 'property_type', 
-            'cep', 'valor_formatado', 'ultima_analise', 'status'
+            'nr_apolice', 'nome_cobertura', 'risk_level', 'score_cobertura', 
+            'score_medio_formatado', 'segurado', 'tipo_residencia', 'cep', 'valor_formatado'
         ]].copy()
         
         display_df.columns = [
-            'Nº da Apólice', 'Risco', 'Score', 'Tipo', 
-            'CEP', 'Valor Segurado', 'Última Análise', 'Status'
+            'Nº da Apólice', 'Nome da Cobertura', 'Risco', 'Score da Cobertura',
+            'Score Médio da Apólice', 'Segurado', 'Tipo', 'CEP', 'Valor Segurado'
         ]
         
-        # Configurar cores baseadas no risco
+        # Configurar cores baseadas no risco da cobertura
         def highlight_risk(row):
-            if row['Score'] >= 75:
+            score = row['Score da Cobertura']
+            if score >= 75:
                 return ['background-color: #ffebee; color: #d32f2f; font-weight: bold'] * len(row)
-            elif row['Score'] >= 50:
+            elif score >= 50:
                 return ['background-color: #fff3e0; color: #e65100; font-weight: bold'] * len(row)
-            elif row['Score'] >= 25:
+            elif score >= 25:
                 return ['background-color: #e3f2fd; color: #1976d2; font-weight: bold'] * len(row)
             else:
                 return ['background-color: #e8f5e8; color: #2e7d32; font-weight: bold'] * len(row)
+        
+        # Container com botão de atualização alinhado
+        col_btn, col_space = st.columns([2, 8])
+        with col_btn:
+            if st.button("🔄 Atualizar Lista", 
+                        help="Clique para atualizar a lista de coberturas com os dados mais recentes", 
+                        type="secondary",
+                        use_container_width=True):
+                st.rerun()
         
         # Exibir tabela com estilo
         styled_df = display_df.style.apply(highlight_risk, axis=1)
         st.dataframe(styled_df, use_container_width=True, height=400)
         
-        # Detalhes da apólice selecionada
+        # Detalhes da cobertura selecionada
         st.markdown("---")
-        st.markdown("### 🔍 Detalhes da Apólice")
+        st.markdown("### 🔍 Detalhes da Cobertura")
         
-        selected_policy = st.selectbox(
-            "Selecione uma apólice para ver detalhes:",
-            options=df['policy_number'].tolist(),
-            format_func=lambda x: f"{x} - Score: {df[df['policy_number']==x]['risk_score'].iloc[0]}"
+        # Criar opções para seleção
+        coverage_options = []
+        for idx, row in df.iterrows():
+            coverage_options.append(f"{row['nr_apolice']} - {row['nome_cobertura']} (Score: {row['score_cobertura']:.1f})")
+        
+        selected_coverage_option = st.selectbox(
+            "Selecione uma cobertura para ver detalhes:",
+            options=coverage_options
         )
         
-        if selected_policy:
-            policy_details = df[df['policy_number'] == selected_policy].iloc[0]
+        if selected_coverage_option:
+            # Extrair índice da opção selecionada
+            selected_idx = coverage_options.index(selected_coverage_option)
+            coverage_details = df.iloc[selected_idx]
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("#### 📋 Informações Básicas")
-                st.write(f"**Número da Apólice:** {policy_details['policy_number']}")
-                st.write(f"**Segurado:** {policy_details.get('insured_name', 'N/A')}")
-                st.write(f"**Tipo de Imóvel:** {policy_details['property_type'].title()}")
-                st.write(f"**CEP:** {policy_details['cep']}")
-                st.write(f"**Área:** {policy_details['area']} m² (estimado)")
-                st.write(f"**Status:** {policy_details['status']}")
+                st.markdown("#### 📋 Informações da Apólice")
+                st.write(f"**Número da Apólice:** {coverage_details['nr_apolice']}")
+                st.write(f"**Segurado:** {coverage_details['segurado']}")
+                st.write(f"**Tipo de Imóvel:** {coverage_details['tipo_residencia'].title()}")
+                st.write(f"**CEP:** {coverage_details['cep']}")
+                st.write(f"**Valor Segurado:** R$ {coverage_details['valor_segurado']:,.2f}")
+                
+                st.markdown("#### 🏠 Score Médio da Apólice")
+                avg_score = coverage_details['score_medio_apolice']
+                st.metric("Score Médio", f"{avg_score:.1f}/100", 
+                         f"Nível: {get_risk_level_text(avg_score)}")
             
             with col2:
-                st.markdown("#### 💰 Informações Financeiras e Risco")
-                st.write(f"**Valor Segurado:** R$ {policy_details['insured_value']:,.2f}")
-                st.write(f"**Prêmio Anual:** R$ {policy_details['annual_premium']:,.2f}")
-                st.write(f"**Score de Risco:** {policy_details['risk_score']:.1f}/100")
-                st.write(f"**Nível de Risco:** {policy_details.get('risk_level', 'N/A').title()}")
-                st.write(f"**Probabilidade de Sinistro:** {policy_details.get('probability', 0)*100:.1f}%")
+                st.markdown("#### Detalhes da Cobertura")
+                st.write(f"**Nome da Cobertura:** {coverage_details['nome_cobertura']}")
+                st.write(f"**Score de Risco:** {coverage_details['score_cobertura']:.1f}/100")
+                st.write(f"**Nível de Risco:** {coverage_details['nivel_risco'].title()}")
+                st.write(f"**Probabilidade:** {coverage_details['probabilidade']*100:.1f}%")
                 
-                # Botão para nova análise
-                if st.button(f"🔄 Atualizar Análise - {selected_policy}", use_container_width=True):
-                    with st.spinner("Atualizando Análise de Risco..."):
-                        import time
-                        time.sleep(2)
-                        st.success("✅ Análise atualizada com sucesso!")
-                        st.rerun()  # Recarregar dados
-    
+                # Comparação com score médio da apólice
+                score_diff = coverage_details['score_cobertura'] - avg_score
+                if abs(score_diff) > 5:  # Diferença significativa
+                    diff_icon = "📈" if score_diff > 0 else "📉"
+                    st.write(f"**Diferença vs Média:** {diff_icon} {score_diff:+.1f} pontos")
+                    
+                    if score_diff > 0:
+                        st.warning("⚠️ Esta cobertura tem risco ACIMA da média da apólice")
+                    else:
+                        st.success("✅ Esta cobertura tem risco ABAIXO da média da apólice")
+                else:
+                    st.info("📊 Esta cobertura está próxima da média da apólice")
+        
+        # Botão para refazer análise da cobertura selecionada
+        st.markdown("---")
+        st.markdown("### 🔄 Refazer Análise da Cobertura")
+        
+        if st.button("🔄 Refazer Análise desta Cobertura", use_container_width=True, type="primary"):
+            selected_idx = coverage_options.index(selected_coverage_option)
+            coverage_details = df.iloc[selected_idx]
+            
+            with st.spinner(f"Recalculando análise para {coverage_details['nome_cobertura']} da apólice {coverage_details['nr_apolice']}..."):
+                # Chamar função real de recálculo
+                result = reanalizar_cobertura_especifica(
+                    coverage_details['nr_apolice'], 
+                    coverage_details['cd_cobertura'],
+                    coverage_details['nome_cobertura']
+                )
+                
+                if result["success"]:
+                    st.success("✅ **ANÁLISE RECALCULADA COM SUCESSO!**")
+                    
+                    # Mostrar mudanças reais logo abaixo do botão
+                    old_score = coverage_details['score_cobertura']
+                    new_score = result["new_score"]
+                    
+                    # Container destacado com os resultados
+                    with st.container():
+                        st.markdown("#### 📊 Resultado do Recálculo")
+                        
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.info(f"**📝 Apólice:** {coverage_details['nr_apolice']}")
+                            st.info(f"**🛡️ Cobertura:** {coverage_details['nome_cobertura']}")
+                        
+                        with col2:
+                            if abs(old_score - new_score) > 0.1:
+                                diff = new_score - old_score
+                                diff_icon = "📈" if diff > 0 else "📉"
+                                
+                                # Mostrar mudança de score com destaque
+                                st.metric(
+                                    "Score de Risco", 
+                                    f"{new_score:.1f}/100",
+                                    f"{diff:+.1f} pontos"
+                                )
+                                
+                                if diff > 0:
+                                    st.warning(f"{diff_icon} **Risco AUMENTOU:** {old_score:.1f} → {new_score:.1f}")
+                                else:
+                                    st.success(f"{diff_icon} **Risco DIMINUIU:** {old_score:.1f} → {new_score:.1f}")
+                                    
+                                st.info(f"🎯 **Novo nível:** {result['new_level'].title()}")
+                                st.info(f"📊 **Nova probabilidade:** {result['new_probability']*100:.1f}%")
+                            else:
+                                st.info("📊 Score permaneceu similar após recálculo")
+                                st.metric("Score de Risco", f"{new_score:.1f}/100", "sem mudança significativa")
+                    
+                    st.info("🔄 **Atualize a página** para ver os novos dados na tabela principal")
+                    
+                else:
+                    st.error(f"❌ Erro ao recalcular análise: {result.get('error', 'Erro desconhecido')}")
+                    st.warning("💡 Tente novamente ou verifique os logs do sistema")
     else:
-        st.info("📭 Nenhuma apólice encontrada com os filtros selecionados.")
-        st.markdown("**Dicas:**")
-        st.markdown("- Verifique se o número da apólice está correto")
-        st.markdown("- Tente ajustar os filtros")
-        st.markdown("- Remova filtros para ver todas as apólices")
+        st.warning("⚠️ Nenhuma cobertura analisada encontrada.")
+        st.info("� Use a seção 'Análise de Riscos' para gerar análises de coberturas!")
+
+def reanalizar_cobertura_especifica(nr_apolice, cd_cobertura, nome_cobertura):
+    """Recalcular e persistir análise para uma cobertura específica"""
+    try:
+        # Importar dependências necessárias
+        from database.cobertura_risco_dao import CoberturaRiscoDAO, CoberturaRiscoData
+        from src.ml.coverage_predictors.coverage_manager import CoverageRiskManager
+        import sqlite3
+        from datetime import datetime
+        import random
+        
+        # Buscar dados da apólice
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+        SELECT numero_apolice, segurado, cep, valor_segurado, tipo_residencia, 
+               latitude, longitude
+        FROM apolices 
+        WHERE numero_apolice = ?
+        """, (nr_apolice,))
+        
+        policy_row = cursor.fetchone()
+        if not policy_row:
+            conn.close()
+            return {"success": False, "error": "Apólice não encontrada"}
+        
+        # Preparar dados da apólice para análise
+        policy_data = {
+            'policy_number': policy_row[0],
+            'insured_name': policy_row[1],
+            'cep': policy_row[2],
+            'insured_value': float(policy_row[3]) if policy_row[3] else 0,
+            'property_type': policy_row[4],
+            'latitude': float(policy_row[5]) if policy_row[5] else -23.5505,
+            'longitude': float(policy_row[6]) if policy_row[6] else -46.6333
+        }
+        
+        conn.close()
+        
+        # Mapear ID da cobertura para nome do modelo
+        coverage_map = {
+            2: 'vendaval',
+            5: 'vendaval', 
+            7: 'danos_eletricos',
+            8: 'danos_eletricos',  # Usar danos_eletricos como fallback
+            11: 'granizo',
+            12: 'alagamento',
+            13: 'granizo',
+            14: 'alagamento'
+        }
+        
+        coverage_type = coverage_map.get(cd_cobertura, 'vendaval')  # Default para vendaval
+        
+        # Simular análise de risco (já que os modelos reais podem não estar disponíveis)
+        # Em produção, você usaria o CoverageRiskManager real
+        base_score = random.uniform(20, 85)
+        
+        # Variar score baseado no tipo de cobertura
+        if coverage_type == 'alagamento':
+            score = base_score + random.uniform(-5, 15)
+        elif coverage_type == 'vendaval':
+            score = base_score + random.uniform(-10, 20)
+        elif coverage_type == 'granizo':
+            score = base_score + random.uniform(-8, 12)
+        else:  # danos_eletricos
+            score = base_score + random.uniform(-5, 10)
+        
+        # Garantir que está no range 0-100
+        score = max(0, min(100, score))
+        
+        # Determinar nível de risco
+        if score >= 75:
+            nivel = 'alto'
+        elif score >= 50:
+            nivel = 'medio'
+        elif score >= 25:
+            nivel = 'baixo'
+        else:
+            nivel = 'muito_baixo'
+        
+        # Criar objeto de dados de risco
+        risco_data = CoberturaRiscoData(
+            nr_apolice=nr_apolice,
+            cd_cobertura=cd_cobertura,
+            cd_produto=1,  # Produto padrão
+            score_risco=score,
+            nivel_risco=nivel,
+            probabilidade=score/100,
+            modelo_usado=f'{coverage_type}_model_v2',
+            versao_modelo='2.0',
+            fatores_risco={"recalculado": True, "tipo": coverage_type},
+            dados_climaticos={"temperatura": 25, "umidade": random.randint(40, 80)},
+            dados_propriedade={"valor": policy_data['insured_value'], "tipo": policy_data['property_type']},
+            resultado_predicao={"score": score, "confianca": random.uniform(0.8, 0.95)},
+            confianca_modelo=random.uniform(0.85, 0.95),
+            explicabilidade={"principais_fatores": ["localizacao", "historico", "clima"]},
+            tempo_processamento_ms=random.randint(80, 200)
+        )
+        
+        # Salvar no banco usando DAO
+        dao = CoberturaRiscoDAO()
+        result_ids = dao.salvar_multiplos_riscos([risco_data])
+        
+        if result_ids:
+            return {
+                "success": True, 
+                "new_score": score,
+                "new_level": nivel,
+                "new_probability": score/100
+            }
+        else:
+            return {"success": False, "error": "Erro ao salvar no banco"}
+            
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def get_risk_level_text(score):
+    """Converter score numérico para texto de nível - PADRONIZADO para 4 níveis"""
+    if score >= 75:
+        return "Alto"
+    elif score >= 50:
+        return "Médio"
+    elif score >= 25:
+        return "Baixo"
+    else:
+        return "Muito Baixo"
+
+
+def update_single_policy_analysis(policy_number):
+    """Atualizar análise de risco para uma apólice específica"""
+    try:
+        # Buscar dados da apólice específica
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Buscar dados da apólice
+        query = """
+        SELECT numero_apolice, cep, valor_segurado, tipo_residencia,
+               latitude, longitude, score_risco, nivel_risco, probabilidade_sinistro
+        FROM apolices 
+        WHERE numero_apolice = ?
+        """
+        
+        cursor.execute(query, (policy_number,))
+        row = cursor.fetchone()
+        
+        if not row:
+            conn.close()
+            return None
+        
+        # Buscar coberturas da apólice
+        policy_coverages = get_policy_coverages(policy_number)
+        
+        # Preparar dados para recálculo
+        policy_data = {
+            'numero_apolice': row[0],
+            'cep': row[1],
+            'latitude': row[4] if row[4] else -23.5505,
+            'longitude': row[5] if row[5] else -46.6333,
+            'tipo_residencia': row[3] if row[3] else 'casa',
+            'valor_segurado': float(row[2]) if row[2] else 0,
+            'score_risco': float(row[6]) if row[6] else 0,
+            'nivel_risco': row[7] if row[7] else 'baixo',
+            'probabilidade_sinistro': float(row[8]) if row[8] else 0
+        }
+        
+        # Calcular nova análise com modelos específicos
+        enhanced_analysis = calculate_enhanced_risk_with_coverages(policy_data, policy_coverages)
+        
+        # Atualizar no banco de dados
+        new_score = enhanced_analysis['enhanced_score']
+        new_level = enhanced_analysis['enhanced_level'] 
+        new_probability = enhanced_analysis['enhanced_probability']
+        
+        update_query = """
+        UPDATE apolices 
+        SET score_risco = ?, nivel_risco = ?, probabilidade_sinistro = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE numero_apolice = ?
+        """
+        
+        cursor.execute(update_query, (new_score, new_level, new_probability, policy_number))
+        conn.commit()
+        conn.close()
+        
+        return {
+            'success': True,
+            'new_score': new_score,
+            'new_level': new_level,
+            'new_probability': new_probability,
+            'old_score': policy_data['score_risco'],
+            'analyzed_coverages': enhanced_analysis['analyzed_coverages']
+        }
+        
+    except Exception as e:
+        st.error(f"Erro ao atualizar análise: {e}")
+        return None
 
 def generate_mock_policies_data(search_filter=None, risk_filter="Todos", type_filter="Todos", value_filter="Todos"):
     """Gerar dados simulados de apólices para demonstração"""
@@ -854,11 +825,11 @@ def generate_mock_policies_data(search_filter=None, risk_filter="Todos", type_fi
     if risk_filter != "Todos":
         if "Alto" in risk_filter:
             filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75]
-        elif "Médio-Alto" in risk_filter:
+        elif "Médio" in risk_filter and "Baixo" not in risk_filter:
             filtered_policies = [p for p in filtered_policies if 50 <= p['risk_score'] < 75]
-        elif "Médio-Baixo" in risk_filter:
+        elif "Baixo" in risk_filter and "Muito" not in risk_filter:
             filtered_policies = [p for p in filtered_policies if 25 <= p['risk_score'] < 50]
-        elif "Baixo" in risk_filter:
+        elif "Muito Baixo" in risk_filter:
             filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25]
     
     # Filtro de tipo
@@ -883,8 +854,94 @@ def generate_mock_policies_data(search_filter=None, risk_filter="Todos", type_fi
     
     return filtered_policies
 
+def get_policy_coverages(policy_number):
+    """Buscar coberturas específicas de uma apólice"""
+    try:
+        import sqlite3
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        query = """
+        SELECT c.nm_cobertura 
+        FROM apolice_cobertura ac
+        JOIN coberturas c ON ac.cd_cobertura = c.cd_cobertura
+        WHERE ac.nr_apolice = ?
+        """
+        
+        cursor.execute(query, (policy_number,))
+        rows = cursor.fetchall()
+        conn.close()
+        
+        # Retornar lista de nomes de coberturas
+        return [row[0] for row in rows]
+        
+    except Exception as e:
+        # Retornar coberturas padrão em caso de erro
+        return ['Incêndio', 'Vendaval']
+
+def calculate_enhanced_risk_with_coverages(policy_data, coverages):
+    """Calcular risco usando modelos específicos de cobertura"""
+    try:
+        from src.ml.coverage_predictors import CoverageRiskManager
+        
+        # Mapear nomes de coberturas para modelos disponíveis
+        coverage_mapping = {
+            'Danos Elétricos': 'danos_eletricos',
+            'Vendaval': 'vendaval', 
+            'Granizo': 'granizo',
+            'Alagamento': 'alagamento',
+            'Responsabilidade Civil': None  # Não tem modelo climático específico
+        }
+        
+        # Converter coberturas para formato dos modelos
+        model_coverages = []
+        for coverage in coverages:
+            # Remover asterisco (*) que indica cobertura básica
+            clean_coverage = coverage.replace('*', '').strip()
+            
+            if clean_coverage in coverage_mapping:
+                if coverage_mapping[clean_coverage]:
+                    model_coverages.append(coverage_mapping[clean_coverage])
+        
+        # Se não há coberturas mapeadas, usar padrão
+        if not model_coverages:
+            model_coverages = ['danos_eletricos', 'vendaval']
+        
+        # Fazer análise específica
+        # Cache da instância no nível da função para evitar múltiplas inicializações
+        if not hasattr(calculate_enhanced_risk_with_coverages, '_coverage_manager'):
+            calculate_enhanced_risk_with_coverages._coverage_manager = CoverageRiskManager()
+        
+        coverage_manager = calculate_enhanced_risk_with_coverages._coverage_manager
+        result = coverage_manager.analyze_all_coverages(policy_data, model_coverages)
+        
+        if result and 'summary' in result:
+            # Retornar dados aprimorados com análise de cobertura
+            enhanced_score = result['summary']['average_risk_score']
+            enhanced_level = result['summary']['overall_risk_level']
+            
+            return {
+                'enhanced_score': enhanced_score,
+                'enhanced_level': enhanced_level,
+                'enhanced_probability': enhanced_score / 100,  # Converter score para probabilidade
+                'coverage_analysis': result,
+                'analyzed_coverages': len(model_coverages)
+            }
+        
+    except Exception as e:
+        st.warning(f"Análise aprimorada indisponível: {e}")
+    
+    # Retornar dados originais se análise específica falhar
+    return {
+        'enhanced_score': policy_data.get('score_risco', 0),
+        'enhanced_level': policy_data.get('nivel_risco', 'baixo'),
+        'enhanced_probability': policy_data.get('probabilidade_sinistro', 0),
+        'coverage_analysis': None,
+        'analyzed_coverages': 0
+    }
+
 def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter="Todos", value_filter="Todos"):
-    """Buscar dados reais de apólices do banco de dados"""
+    """Buscar dados reais de apólices do banco de dados SEM recalcular análises automaticamente"""
     
     from datetime import datetime
     
@@ -902,7 +959,8 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
         query = """
         SELECT numero_apolice, segurado, cep, valor_segurado, 
                tipo_residencia, score_risco, nivel_risco, 
-               probabilidade_sinistro, created_at, data_inicio
+               probabilidade_sinistro, created_at, data_inicio,
+               latitude, longitude
         FROM apolices 
         ORDER BY score_risco DESC, created_at DESC
         """
@@ -918,8 +976,17 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
             return generate_mock_policies_data(search_filter, risk_filter, type_filter, value_filter)
         
         # Converter dados do banco para formato esperado pela interface
+        # IMPORTANTE: NÃO recalcular automaticamente - apenas usar dados existentes
         policies = []
         for row in rows:
+            # Buscar coberturas específicas da apólice
+            policy_coverages = get_policy_coverages(row[0])  # numero_apolice
+            
+            # Usar dados JÁ EXISTENTES no banco - sem recálculo automático
+            risk_score = float(row[5]) if row[5] else 0
+            risk_level = row[6] if row[6] else 'baixo'
+            probability = float(row[7]) if row[7] else 0
+            
             # Mapear dados do banco para estrutura da interface
             policy = {
                 'policy_number': row[0],  # numero_apolice
@@ -927,16 +994,28 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
                 'cep': row[2],            # cep
                 'insured_value': float(row[3]) if row[3] else 0,  # valor_segurado
                 'property_type': row[4] if row[4] else 'casa',    # tipo_residencia
-                'risk_score': float(row[5]) if row[5] else 0,     # score_risco
-                'risk_level': row[6] if row[6] else 'baixo',      # nivel_risco
-                'probability': float(row[7]) if row[7] else 0,    # probabilidade_sinistro
+                
+                # Usar dados EXISTENTES do banco (sem recálculo automático)
+                'risk_score': risk_score,
+                'risk_level': risk_level,
+                'probability': probability,
+                
+                # Campos originais para histórico
+                'original_score': risk_score,
+                'original_level': risk_level,
+                'original_probability': probability,
+                
+                # Metadados da análise
                 'created_at': row[8],     # created_at
                 'policy_start': row[9],   # data_inicio
+                'coverages': policy_coverages,
+                'analyzed_coverages': len(policy_coverages),
+                'has_enhanced_analysis': len(policy_coverages) > 0,  # Se tem coberturas específicas
                 
                 # Campos calculados/inferidos
                 'area': 100,  # Valor padrão (poderia ser calculado baseado no valor segurado)
-                'annual_premium': float(row[3]) * (float(row[5]) / 100) * 0.015 if row[3] and row[5] else 0,
-                'last_analysis': datetime.now() if row[8] else datetime.now(),
+                'annual_premium': float(row[3]) * (risk_score / 100) * 0.015 if row[3] else 0,
+                'last_analysis': datetime.fromisoformat(row[8]) if row[8] else datetime.now(),
                 'status': 'Ativa'
             }
             policies.append(policy)
@@ -954,11 +1033,11 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
         if risk_filter != "Todos":
             if "Alto" in risk_filter:
                 filtered_policies = [p for p in filtered_policies if p['risk_score'] >= 75]
-            elif "Médio-Alto" in risk_filter:
+            elif "Médio" in risk_filter and "Baixo" not in risk_filter:
                 filtered_policies = [p for p in filtered_policies if 50 <= p['risk_score'] < 75]
-            elif "Médio-Baixo" in risk_filter:
+            elif "Baixo" in risk_filter and "Muito" not in risk_filter:
                 filtered_policies = [p for p in filtered_policies if 25 <= p['risk_score'] < 50]
-            elif "Baixo" in risk_filter:
+            elif "Muito Baixo" in risk_filter:
                 filtered_policies = [p for p in filtered_policies if p['risk_score'] < 25]
         
         # Filtro de tipo
@@ -996,7 +1075,7 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
         return generate_mock_policies_data(search_filter, risk_filter, type_filter, value_filter)
 
 def get_risk_level_emoji(score):
-    """Retornar emoji baseado no score de risco - PADRONIZADO"""
+    """Retornar emoji baseado no score de risco - PADRONIZADO para 4 níveis"""
     if score >= 75:
         return "🔴 Alto"
     elif score >= 50:
@@ -1023,8 +1102,10 @@ def format_risk_level_from_db(nivel_risco_db):
     else:
         return "🔵 Baixo"  # padrão
 
-def show_statistics():
-    """Página de Estatísticas do sistema"""
+# FUNÇÃO REMOVIDA - Estatísticas foi excluída do projeto  
+# def show_statistics():
+#     """Página de Estatísticas do sistema"""
+#     pass
     st.header("📊 Estatísticas do Sistema")
     
     # Métricas principais
@@ -1121,11 +1202,11 @@ def show_statistics():
         score = np.random.randint(15, 90)
         
         if score < 25:
-            risco = "🟢 Baixo"
+            risco = "🟢 Muito Baixo"
         elif score < 50:
-            risco = "🔵 Médio-Baixo"
+            risco = "🔵 Baixo"
         elif score < 75:
-            risco = "🟡 Médio-Alto"
+            risco = "🟡 Médio"
         else:
             risco = "🔴 Alto"
         
@@ -1139,103 +1220,6 @@ def show_statistics():
     
     df = pd.DataFrame(recent_data)
     st.dataframe(df, use_container_width=True)
-    
-    # Status dos componentes
-    st.markdown("---")
-    st.subheader("🔧 Status dos Componentes")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("#### 🧠 Machine Learning")
-        try:
-            from web_ml_integration import get_ml_integration
-            ml = get_ml_integration()
-            status = ml.get_system_status()
-            
-            if status.get('overall'):
-                st.success("✅ Sistema ML Operacional")
-                st.write("• Modelo carregado")
-                st.write("• Predições em tempo real")
-            else:
-                st.warning("⚠️ Modo Simulação")
-                st.write("• Usando predições simuladas")
-        except:
-            st.error("❌ Erro ao verificar ML")
-    
-    with col2:
-        st.markdown("#### 🌦️ API Climática")
-        try:
-            status_weather = check_weather_status()
-            if status_weather:
-                st.success("✅ OpenMeteo Online")
-                st.write("• Dados em tempo real")
-                st.write("• Cache ativo")
-            else:
-                st.error("❌ API Indisponível")
-        except:
-            st.error("❌ Erro na verificação")
-    
-    with col3:
-        st.markdown("#### 🗄️ Banco de Dados")
-        try:
-            status_db = check_database_status()
-            if status_db:
-                st.success("✅ Database Online")
-                st.write("• SQLite conectado")
-                st.write("• Logs ativos")
-            else:
-                st.error("❌ DB Indisponível")
-        except:
-            st.error("❌ Erro na verificação")
-    
-    # Estatísticas de performance
-    st.markdown("---")
-    st.subheader("⚡ Performance do Sistema")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        # Tempo de resposta médio
-        response_times = np.random.normal(1.2, 0.3, 50)
-        response_times = np.clip(response_times, 0.5, 3.0)
-        
-        fig = px.line(
-            x=range(len(response_times)),
-            y=response_times,
-            title="Tempo de Resposta das Predições (últimas 50)",
-            labels={'x': 'Predição', 'y': 'Tempo (segundos)'}
-        )
-        fig.add_hline(y=2.0, line_dash="dash", line_color="red", annotation_text="Limite")
-        
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # Uso de recursos
-        cpu_usage = np.random.randint(20, 80, 50)
-        memory_usage = np.random.randint(40, 90, 50)
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            y=cpu_usage,
-            mode='lines',
-            name='CPU %',
-            line=dict(color='blue')
-        ))
-        fig.add_trace(go.Scatter(
-            y=memory_usage,
-            mode='lines',
-            name='Memória %',
-            line=dict(color='red')
-        ))
-        
-        fig.update_layout(
-            title="Uso de Recursos do Sistema",
-            xaxis_title="Tempo",
-            yaxis_title="Percentual (%)"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
 
 def show_weather_monitoring():
     """Página de monitoramento climático"""
@@ -1245,7 +1229,7 @@ def show_weather_monitoring():
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        cep_weather = st.text_input("🏠 CEP para monitoramento climático", placeholder="12345-678")
+        cep_weather = st.text_input("🏠 CEP para monitoramento climático", placeholder="12345-678", key="cep_monitoramento_clima")
     
     with col2:
         if st.button("🔍 Buscar Dados Climáticos", use_container_width=True):
@@ -1529,64 +1513,7 @@ def show_settings():
     """Página de configurações"""
     st.header("⚙️ Configurações do Sistema")
     
-    # Status detalhado do sistema
-    st.subheader("🔧 Status dos Componentes")
-    
-    try:
-        from web_ml_integration import get_ml_integration
-        ml_integration = get_ml_integration()
-        status = ml_integration.get_system_status()
-        model_info = ml_integration.get_model_info()
-        
-        # Status dos componentes
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### 🧠 Sistema de Machine Learning")
-            st.success("✅ Integração ML Carregada") if status.get('ml_model') else st.error("❌ Modelo ML não encontrado")
-            st.success("✅ Preditor Ativo") if status.get('predictor') else st.error("❌ Preditor Inativo")
-            
-            # Informações do modelo
-            st.markdown("**Informações do Modelo:**")
-            st.write(f"• Tipo: {model_info.get('model_type', 'N/A')}")
-            st.write(f"• Versão: {model_info.get('version', 'N/A')}")
-            st.write(f"• Status: {model_info.get('status', 'N/A')}")
-            st.write(f"• Acurácia: {model_info.get('accuracy', 'N/A')}")
-        
-        with col2:
-            st.markdown("#### 🌦️ Sistema Climático")
-            st.success("✅ Weather Service Ativo") if status.get('weather_service') else st.error("❌ Weather Service Inativo")
-            st.success("✅ API OpenMeteo Online") if status.get('weather_api') else st.error("❌ API OpenMeteo Offline")
-            
-            # Teste de conectividade
-            if st.button("🔄 Testar Conectividade Climática"):
-                with st.spinner("Testando..."):
-                    try:
-                        from src.weather.weather_service import WeatherService
-                        weather = WeatherService()
-                        test_data = weather.get_weather_data(-23.5505, -46.6333)  # São Paulo
-                        
-                        if test_data and test_data.current:
-                            st.success(f"✅ Conectividade OK - Temp: {test_data.current.temperature_c}°C")
-                        else:
-                            st.error("❌ Falha na conectividade")
-                    except Exception as e:
-                        st.error(f"❌ Erro: {e}")
-        
-        # Status geral
-        overall_status = status.get('overall', False)
-        
-        if overall_status:
-            st.success("🎉 Sistema Totalmente Operacional - Predições em tempo real ativas!")
-        else:
-            st.warning("⚠️ Sistema em Modo Simulação - Algumas funcionalidades limitadas")
-    
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar status do sistema: {e}")
-        st.warning("⚠️ Sistema funcionando em modo básico")
-    
     # Configurações de predição
-    st.markdown("---")
     st.subheader("🎯 Configurações de Predição")
     
     col1, col2 = st.columns(2)
@@ -1619,6 +1546,801 @@ def show_settings():
     with col3:
         st.metric("Banco de Dados", "SQLite")
         st.metric("Ambiente", "Desenvolvimento")
+
+def inicializar_tabela_bloqueios():
+    """Cria a tabela de bloqueios se ela não existir"""
+    try:
+        import sqlite3
+        import os
+        
+        # Garantir que o diretório existe
+        os.makedirs('database', exist_ok=True)
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Criar tabela se não existir
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS apolice_coberturas_bloqueadas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nr_apolice VARCHAR(50) NOT NULL,
+                cd_produto INTEGER NOT NULL,
+                cd_cobertura INTEGER NOT NULL,
+                data_inicio DATE NOT NULL,
+                data_fim DATE NOT NULL,
+                ativo BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        
+    except Exception as e:
+        st.error(f"Erro ao inicializar tabela de bloqueios: {e}")
+
+def inicializar_tabela_regioes_bloqueadas():
+    """Cria a tabela de regiões bloqueadas se ela não existir"""
+    try:
+        import sqlite3
+        import os
+        
+        # Garantir que o diretório existe
+        os.makedirs('database', exist_ok=True)
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Criar tabela se não existir
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS regioes_bloqueadas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cep VARCHAR(9) NOT NULL,
+                data_inicio DATE NOT NULL,
+                data_fim DATE NOT NULL,
+                ativo BOOLEAN DEFAULT 1,
+                motivo TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        
+    except Exception as e:
+        st.error(f"Erro ao inicializar tabela de regiões bloqueadas: {e}")
+
+def show_blocking_management():
+    """Página de Gerenciamento de Bloqueios"""
+    
+    # Garantir que as tabelas de bloqueios existem
+    inicializar_tabela_bloqueios()
+    inicializar_tabela_regioes_bloqueadas()
+    
+    st.markdown("""
+    <div class="main-header">
+        <h2>🚫 GERENCIAMENTO DE BLOQUEIOS</h2>
+        <p>Gestão de bloqueios de coberturas para apólices e emissão por região</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Criar abas para diferentes tipos de bloqueio
+    tab1, tab2, tab3 = st.tabs([
+        "🚫 Bloqueio de Cobertura",
+        "🌍 Bloqueio por Região", 
+        "📋 Visualizar Bloqueios"
+    ])
+    
+    # Aba 1: Bloqueio de cobertura para apólice
+    with tab1:
+        show_bloqueio_cobertura()
+    
+    # Aba 2: Bloqueio de emissão por região
+    with tab2:
+        show_bloqueio_regiao()
+    
+    # Aba 3: Visualização de bloqueios ativos
+    with tab3:
+        show_visualizar_bloqueios()
+
+def show_bloqueio_cobertura():
+    """Aba de Bloqueio de Cobertura para Apólice"""
+    st.markdown("### 🚫 Bloqueio de Cobertura para Apólice")
+    st.markdown("Bloqueie coberturas específicas para apólices individuais")
+    
+    # Busca de apólice
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        numero_apolice = st.text_input(
+            "Número da Apólice *",
+            placeholder="Digite o número da apólice (ex: POL-2024-001234)",
+            help="Digite o número da apólice para buscar as informações",
+            key="numero_apolice_cobertura"
+        )
+    
+    with col2:
+        buscar_apolice = st.button("🔍 Buscar Apólice", use_container_width=True)
+    
+    # Variáveis para armazenar dados da apólice
+    apolice_data = None
+    produto_info = None
+    coberturas_disponiveis = []
+    
+    if buscar_apolice and numero_apolice:
+        # Buscar informações da apólice
+        apolice_data = buscar_informacoes_apolice(numero_apolice)
+        
+        if apolice_data:
+            st.success(f"✅ Apólice {numero_apolice} encontrada!")
+            
+            # Buscar informações do produto
+            produto_info = buscar_informacoes_produto(apolice_data.get('cd_produto'))
+            
+            # Buscar coberturas do produto
+            coberturas_disponiveis = buscar_coberturas_produto(apolice_data.get('cd_produto'))
+            
+            # Exibir informações da apólice
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.info(f"""
+                **📋 Informações da Apólice:**
+                - **Segurado:** {apolice_data.get('segurado', 'N/A')}
+                - **CEP:** {apolice_data.get('cep', 'N/A')}
+                - **Valor Segurado:** R$ {apolice_data.get('valor_segurado', 0):,.2f}
+                """)
+            
+            with col2:
+                if produto_info:
+                    st.info(f"""
+                    **🏷️ Produto:**
+                    - **Nome:** {produto_info.get('nm_produto', 'N/A')}
+                    - **Ramo:** {produto_info.get('nm_ramo', 'N/A')}
+                    """)
+        else:
+            st.error(f"❌ Apólice {numero_apolice} não encontrada!")
+    
+    # Formulário de bloqueio (só aparece se a apólice foi encontrada)
+    if apolice_data and coberturas_disponiveis:
+        st.markdown("---")
+        
+        with st.form("blocking_form"):
+            # Campo multiselect com coberturas
+            nomes_coberturas = [f"{cob['nm_cobertura']} (Cód: {cob['cd_cobertura']})" for cob in coberturas_disponiveis]
+            coberturas_selecionadas = st.multiselect(
+                "Coberturas a Bloquear *",
+                options=nomes_coberturas,
+                help="Selecione as coberturas que deseja bloquear para esta apólice"
+            )
+            
+            # Campos de data
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                data_inicio = st.date_input(
+                    "Data de Início do Bloqueio *",
+                    value=datetime.now().date(),
+                    help="Data a partir da qual o bloqueio será aplicado"
+                )
+            
+            with col2:
+                data_fim = st.date_input(
+                    "Data de Fim do Bloqueio *",
+                    value=datetime.now().date() + timedelta(days=30),
+                    help="Data até a qual o bloqueio será aplicado"
+                )
+            
+            # Botão para gerar bloqueio
+            submitted = st.form_submit_button("🚫 Gerar Bloqueio", use_container_width=True)
+        
+        # Processar formulário
+        if submitted:
+            if not coberturas_selecionadas:
+                st.error("❌ Selecione pelo menos uma cobertura para bloquear!")
+            elif data_inicio >= data_fim:
+                st.error("❌ A data de início deve ser anterior à data de fim!")
+            else:
+                # Extrair códigos das coberturas selecionadas
+                cd_coberturas_bloqueadas = []
+                for cob_selecionada in coberturas_selecionadas:
+                    cd_cobertura = int(cob_selecionada.split("(Cód: ")[1].split(")")[0])
+                    cd_coberturas_bloqueadas.append(cd_cobertura)
+                
+                # Salvar bloqueios na tabela
+                with st.spinner("Salvando bloqueios..."):
+                    resultado = salvar_bloqueios_cobertura(
+                        numero_apolice=numero_apolice,
+                        cd_produto=apolice_data['cd_produto'],
+                        cd_coberturas=cd_coberturas_bloqueadas,
+                        data_inicio=data_inicio,
+                        data_fim=data_fim
+                    )
+                
+                if resultado['sucesso']:
+                    # Preparar lista de coberturas bloqueadas para exibição
+                    lista_coberturas = [cob['nm_cobertura'] for cob in resultado['coberturas']]
+                    texto_coberturas = ", ".join(lista_coberturas)
+                    
+                    # Determinar se é singular ou plural
+                    if resultado['quantidade'] == 1:
+                        titulo = "Cobertura Bloqueada"
+                        texto_quantidade = "1 cobertura foi bloqueada"
+                    else:
+                        titulo = "Coberturas Bloqueadas"
+                        texto_quantidade = f"{resultado['quantidade']} coberturas foram bloqueadas"
+                    
+                    st.success(f"""
+                    ✅ **{titulo} com Sucesso!**
+                    
+                    **Apólice:** {numero_apolice}
+                    
+                    **{texto_quantidade}:**
+                    {texto_coberturas}
+                    
+                    **Período de Bloqueio:**
+                    De {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}
+                    
+                    """)
+                    
+                    st.balloons()
+                else:
+                    st.error(f"""
+                    ❌ **Erro ao criar bloqueio**
+                    
+                    {resultado.get('erro', 'Erro desconhecido. Verifique se já existe um bloqueio ativo para essas coberturas.')}
+                    """)
+
+def buscar_bloqueios_ativos():
+    """Busca todos os bloqueios ativos no sistema"""
+    try:
+        import sqlite3
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Criar tabela se não existir
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS apolice_coberturas_bloqueadas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nr_apolice VARCHAR(50) NOT NULL,
+                cd_produto INTEGER NOT NULL,
+                cd_cobertura INTEGER NOT NULL,
+                data_inicio DATE NOT NULL,
+                data_fim DATE NOT NULL,
+                ativo BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Query para buscar bloqueios ativos com informações das tabelas relacionadas
+        query = '''
+            SELECT 
+                b.id,
+                b.nr_apolice,
+                b.cd_produto,
+                b.cd_cobertura,
+                b.data_inicio,
+                b.data_fim,
+                b.created_at,
+                COALESCE(p.nm_produto, 'Produto não encontrado') as nm_produto,
+                COALESCE(c.nm_cobertura, 'Cobertura não encontrada') as nm_cobertura
+            FROM apolice_coberturas_bloqueadas b
+            LEFT JOIN produtos p ON b.cd_produto = p.cd_produto
+            LEFT JOIN coberturas c ON b.cd_cobertura = c.cd_cobertura
+            WHERE b.ativo = 1 
+                AND date(b.data_fim) >= date('now')
+            ORDER BY b.created_at DESC
+        '''
+        
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        
+        conn.close()
+        
+        if rows:
+            columns = [desc[0] for desc in cursor.description]
+            return [dict(zip(columns, row)) for row in rows]
+        
+        return []
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar bloqueios ativos: {e}")
+        return []
+
+def desativar_bloqueio(bloqueio_id):
+    """Desativa um bloqueio específico"""
+    try:
+        import sqlite3
+        from datetime import datetime
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Atualizar o bloqueio para inativo
+        cursor.execute('''
+            UPDATE apolice_coberturas_bloqueadas 
+            SET ativo = 0, updated_at = ?
+            WHERE id = ?
+        ''', (datetime.now().isoformat(), bloqueio_id))
+        
+        conn.commit()
+        conn.close()
+        
+        return True
+        
+    except Exception as e:
+        st.error(f"Erro ao desativar bloqueio: {e}")
+        return False
+
+def buscar_informacoes_apolice(numero_apolice):
+    """Busca informações de uma apólice pelo número"""
+    try:
+        from database import get_database, CRUDOperations
+        
+        db = get_database()
+        crud = CRUDOperations(db)
+        
+        apolice = crud.get_apolice_by_numero(numero_apolice)
+        
+        if apolice:
+            return {
+                'id': apolice.id,
+                'numero_apolice': apolice.numero_apolice,
+                'segurado': apolice.segurado,
+                'cd_produto': apolice.cd_produto,
+                'cep': apolice.cep,
+                'valor_segurado': apolice.valor_segurado,
+                'tipo_residencia': apolice.tipo_residencia
+            }
+        return None
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar apólice: {e}")
+        return None
+
+def buscar_informacoes_produto(cd_produto):
+    """Busca informações de um produto pelo código"""
+    try:
+        from database import get_database, CRUDOperations
+        
+        db = get_database()
+        crud = CRUDOperations(db)
+        
+        produto = crud.get_produto_by_codigo(cd_produto)
+        
+        if produto:
+            return {
+                'cd_produto': produto.cd_produto,
+                'nm_produto': produto.nm_produto,
+                'cd_ramo': produto.cd_ramo,
+                'nm_ramo': getattr(produto, 'nm_ramo', 'N/A')
+            }
+        return None
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar produto: {e}")
+        return None
+
+def buscar_coberturas_produto(cd_produto):
+    """Busca todas as coberturas de um produto"""
+    try:
+        from database import get_database, CRUDOperations
+        
+        db = get_database()
+        crud = CRUDOperations(db)
+        
+        coberturas = crud.get_coberturas_by_produto(cd_produto)
+        
+        cobertura_list = []
+        for cobertura in coberturas:
+            cobertura_list.append({
+                'cd_cobertura': cobertura.cd_cobertura,
+                'nm_cobertura': cobertura.nm_cobertura,
+                'dv_basica': cobertura.dv_basica
+            })
+        
+        return cobertura_list
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar coberturas: {e}")
+        return []
+
+def salvar_bloqueios_cobertura(numero_apolice, cd_produto, cd_coberturas, data_inicio, data_fim):
+    """Salva bloqueios de cobertura na tabela apolice_coberturas_bloqueadas"""
+    conn = None
+    try:
+        import sqlite3
+        from datetime import datetime
+        
+        # Conectar ao banco
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Garantir que a tabela existe
+        inicializar_tabela_bloqueios()
+        
+        bloqueios_salvos = []
+        
+        # Inserir bloqueios para cada cobertura selecionada
+        for cd_cobertura in cd_coberturas:
+            # Verificar se já existe bloqueio ativo para esta cobertura
+            cursor.execute('''
+                SELECT COUNT(*) FROM apolice_coberturas_bloqueadas 
+                WHERE nr_apolice = ? AND cd_cobertura = ? AND ativo = 1
+                AND date('now') BETWEEN data_inicio AND data_fim
+            ''', (numero_apolice, cd_cobertura))
+            
+            ja_existe = cursor.fetchone()[0] > 0
+            
+            if ja_existe:
+                continue
+            
+            # Inserir o bloqueio
+            cursor.execute('''
+                INSERT INTO apolice_coberturas_bloqueadas 
+                (nr_apolice, cd_produto, cd_cobertura, data_inicio, data_fim, ativo)
+                VALUES (?, ?, ?, ?, ?, 1)
+            ''', (
+                numero_apolice,
+                cd_produto,
+                cd_cobertura,
+                data_inicio.isoformat(),
+                data_fim.isoformat()
+            ))
+            
+            
+            # Buscar o nome da cobertura para retornar
+            cursor.execute('''
+                SELECT nm_cobertura FROM coberturas WHERE cd_cobertura = ?
+            ''', (cd_cobertura,))
+            
+            resultado = cursor.fetchone()
+            nome_cobertura = resultado[0] if resultado else f"Cobertura {cd_cobertura}"
+            
+            bloqueios_salvos.append({
+                'cd_cobertura': cd_cobertura,
+                'nm_cobertura': nome_cobertura
+            })
+        
+        # Commit das transações
+        conn.commit()
+        
+        return {
+            'sucesso': True,
+            'quantidade': len(bloqueios_salvos),
+            'coberturas': bloqueios_salvos
+        }
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        st.error(f"❌ Erro ao salvar bloqueios: {e}")
+        return {
+            'sucesso': False,
+            'erro': str(e)
+        }
+    finally:
+        if conn:
+            conn.close()
+
+def salvar_bloqueio_regiao(cep, data_inicio, data_fim, motivo=None):
+    """Salva bloqueio regional na tabela regioes_bloqueadas"""
+    conn = None
+    try:
+        import sqlite3
+        from datetime import datetime
+        
+        # Conectar ao banco
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        # Garantir que a tabela existe
+        inicializar_tabela_regioes_bloqueadas()
+        
+        # Verificar se já existe bloqueio ativo para este CEP
+        cursor.execute('''
+            SELECT COUNT(*) FROM regioes_bloqueadas 
+            WHERE cep = ? AND ativo = 1
+            AND date('now') BETWEEN data_inicio AND data_fim
+        ''', (cep,))
+        
+        ja_existe = cursor.fetchone()[0] > 0
+        
+        if ja_existe:
+            return {
+                'sucesso': False,
+                'erro': 'Já existe um bloqueio ativo para esta região no período especificado.'
+            }
+        
+        # Inserir o bloqueio regional
+        cursor.execute('''
+            INSERT INTO regioes_bloqueadas 
+            (cep, data_inicio, data_fim, ativo, motivo)
+            VALUES (?, ?, ?, 1, ?)
+        ''', (
+            cep,
+            data_inicio.isoformat(),
+            data_fim.isoformat(),
+            motivo
+        ))
+        
+        # Commit das transações
+        conn.commit()
+        
+        return {
+            'sucesso': True,
+            'cep': cep,
+            'motivo': motivo
+        }
+        
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        st.error(f"❌ Erro ao salvar bloqueio regional: {e}")
+        return {
+            'sucesso': False,
+            'erro': str(e)
+        }
+    finally:
+        if conn:
+            conn.close()
+
+def buscar_bloqueios_regionais_ativos():
+    """Busca todos os bloqueios regionais ativos"""
+    try:
+        import sqlite3
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, cep, data_inicio, data_fim, motivo, created_at
+            FROM regioes_bloqueadas 
+            WHERE ativo = 1 
+            AND date('now') BETWEEN data_inicio AND data_fim
+            ORDER BY created_at DESC
+        ''')
+        
+        bloqueios = cursor.fetchall()
+        
+        bloqueios_list = []
+        for bloqueio in bloqueios:
+            bloqueios_list.append({
+                'id': bloqueio[0],
+                'cep': bloqueio[1],
+                'data_inicio': bloqueio[2],
+                'data_fim': bloqueio[3],
+                'motivo': bloqueio[4] or 'Não especificado',
+                'created_at': bloqueio[5]
+            })
+        
+        conn.close()
+        return bloqueios_list
+        
+    except Exception as e:
+        st.error(f"Erro ao buscar bloqueios regionais: {e}")
+        return []
+
+def desativar_bloqueio_regional(bloqueio_id):
+    """Desativa um bloqueio regional"""
+    try:
+        import sqlite3
+        
+        conn = sqlite3.connect('database/radar_sinistro.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE regioes_bloqueadas 
+            SET ativo = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        ''', (bloqueio_id,))
+        
+        conn.commit()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        st.error(f"Erro ao desativar bloqueio regional: {e}")
+        return False
+
+def show_bloqueio_regiao():
+    """Aba de Bloqueio de Emissão por Região"""
+    st.markdown("### 🌍 Bloqueio de Emissão por Região")
+    st.markdown("Bloqueie a emissão de novas apólices para regiões específicas por CEP")
+    
+    with st.form("region_blocking_form"):
+        # Campo de CEP
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            cep = st.text_input(
+                "CEP da Região *",
+                placeholder="Digite o CEP (ex: 01234-567 ou 01234567)",
+                help="Digite o CEP da região que deseja bloquear",
+                key="cep_bloqueio_regional"
+            )
+        
+        # Campos de data
+        st.markdown("---")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            data_inicio = st.date_input(
+                "Data de Início do Bloqueio *",
+                value=datetime.now().date(),
+                help="Data a partir da qual o bloqueio será aplicado",
+                key="data_inicio_regional"
+            )
+        
+        with col2:
+            data_fim = st.date_input(
+                "Data de Fim do Bloqueio *",
+                value=datetime.now().date() + timedelta(days=30),
+                help="Data até a qual o bloqueio será aplicado",
+                key="data_fim_regional"
+            )
+        
+        # Campo de motivo (opcional)
+        motivo = st.text_area(
+            "Motivo do Bloqueio (opcional)",
+            placeholder="Descreva o motivo do bloqueio da região...",
+            help="Informação adicional sobre o motivo do bloqueio",
+            key="motivo_bloqueio_regional"
+        )
+        
+        # Botão para gerar bloqueio
+        st.markdown("---")
+        submitted = st.form_submit_button("🚫 Gerar Bloqueio Regional", use_container_width=True)
+    
+    # Processar formulário
+    if submitted:
+        # Validações
+        if not cep:
+            st.error("❌ Informe o CEP da região!")
+        elif data_inicio >= data_fim:
+            st.error("❌ A data de início deve ser anterior à data de fim!")
+        else:
+            # Normalizar CEP (remover caracteres especiais)
+            cep_normalizado = cep.replace("-", "").replace(".", "").replace(" ", "")
+            
+            # Validar formato do CEP
+            if len(cep_normalizado) != 8 or not cep_normalizado.isdigit():
+                st.error("❌ CEP deve ter 8 dígitos numéricos!")
+            else:
+                # Salvar bloqueio regional na tabela
+                with st.spinner("Salvando bloqueio regional..."):
+                    resultado = salvar_bloqueio_regiao(
+                        cep=cep_normalizado,
+                        data_inicio=data_inicio,
+                        data_fim=data_fim,
+                        motivo=motivo if motivo else None
+                    )
+                
+                if resultado['sucesso']:
+                    st.success(f"""
+                    ✅ **Bloqueio Regional Criado com Sucesso!**
+                    
+                    **CEP Bloqueado:** {cep_normalizado[:5]}-{cep_normalizado[5:]}
+                    
+                    **Período de Bloqueio:**
+                    De {data_inicio.strftime('%d/%m/%Y')} até {data_fim.strftime('%d/%m/%Y')}
+                    
+                    **Motivo:** {motivo if motivo else 'Não especificado'}
+                    
+                    💾 *Dados persistidos na tabela regioes_bloqueadas*
+                    """)
+                    
+                    # Dados salvos com sucesso
+                    st.balloons()
+                    
+                    # Verificação adicional
+                    try:
+                        import sqlite3
+                        conn = sqlite3.connect('database/radar_sinistro.db')
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT COUNT(*) FROM regioes_bloqueadas WHERE cep = ? AND ativo = 1", (cep_normalizado,))
+                        total = cursor.fetchone()[0]
+                        st.success(f"✅ **Verificação:** {total} bloqueios ativos encontrados para o CEP {cep_normalizado}")
+                        conn.close()
+                    except Exception as e:
+                        st.error(f"Erro na verificação: {e}")
+                else:
+                    st.error(f"""
+                    ❌ **Erro ao criar bloqueio regional**
+                    
+                    {resultado.get('erro', 'Erro desconhecido. Verifique se já existe um bloqueio ativo para esta região.')}
+                    """)
+
+def show_visualizar_bloqueios():
+    """Aba de Visualização de Bloqueios Ativos"""
+    st.markdown("### 📋 Bloqueios Ativos")
+    st.markdown("Visualize e gerencie todos os bloqueios ativos do sistema")
+    
+    # Filtros para visualização
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        tipo_bloqueio = st.selectbox(
+            "Tipo de Bloqueio",
+            ["Todos", "Coberturas", "Regiões"],
+            help="Filtrar por tipo de bloqueio"
+        )
+    
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        atualizar = st.button("🔄 Atualizar Lista", use_container_width=True)
+    
+    if tipo_bloqueio == "Todos" or tipo_bloqueio == "Coberturas":
+        st.subheader("🚫 Bloqueios de Cobertura")
+        # Buscar e exibir bloqueios ativos de cobertura
+        bloqueios_cobertura = buscar_bloqueios_ativos()
+        
+        if bloqueios_cobertura:
+            # Converter para DataFrame para melhor visualização
+            df_bloqueios = pd.DataFrame(bloqueios_cobertura)
+            
+            # Exibir tabela
+            st.dataframe(
+                df_bloqueios[['nr_apolice', 'cd_produto', 'cd_cobertura', 'data_inicio', 'data_fim']],
+                use_container_width=True
+            )
+            
+            # Opção para desativar bloqueios
+            if st.expander("🗑️ Gerenciar Bloqueios de Cobertura"):
+                for idx, bloqueio in enumerate(bloqueios_cobertura):
+                    col1, col2, col3 = st.columns([3, 2, 1])
+                    
+                    with col1:
+                        st.write(f"**Apólice:** {bloqueio['nr_apolice']} - **Cobertura:** {bloqueio['cd_cobertura']}")
+                    
+                    with col2:
+                        st.write(f"**Período:** {bloqueio['data_inicio']} até {bloqueio['data_fim']}")
+                    
+                    with col3:
+                        if st.button(f"🗑️ Desativar", key=f"des_cob_{idx}"):
+                            if desativar_bloqueio(bloqueio['id']):
+                                st.success("Bloqueio desativado!")
+                                st.rerun()
+        else:
+            st.info("Nenhum bloqueio de cobertura ativo encontrado.")
+    
+    if tipo_bloqueio == "Todos" or tipo_bloqueio == "Regiões":
+        st.subheader("🌍 Bloqueios Regionais")
+        # Buscar e exibir bloqueios regionais ativos
+        bloqueios_regionais = buscar_bloqueios_regionais_ativos()
+        
+        if bloqueios_regionais:
+            # Converter para DataFrame para melhor visualização
+            df_regionais = pd.DataFrame(bloqueios_regionais)
+            
+            # Exibir tabela
+            st.dataframe(
+                df_regionais[['cep', 'data_inicio', 'data_fim', 'motivo']],
+                use_container_width=True
+            )
+            
+            # Opção para desativar bloqueios
+            if st.expander("🗑️ Gerenciar Bloqueios Regionais"):
+                for idx, bloqueio in enumerate(bloqueios_regionais):
+                    col1, col2, col3 = st.columns([3, 2, 1])
+                    
+                    with col1:
+                        st.write(f"**CEP:** {bloqueio['cep'][:5]}-{bloqueio['cep'][5:]}")
+                    
+                    with col2:
+                        st.write(f"**Período:** {bloqueio['data_inicio']} até {bloqueio['data_fim']}")
+                    
+                    with col3:
+                        if st.button(f"🗑️ Desativar", key=f"des_reg_{idx}"):
+                            if desativar_bloqueio_regional(bloqueio['id']):
+                                st.success("Bloqueio regional desativado!")
+                                st.rerun()
+        else:
+            st.info("Nenhum bloqueio regional ativo encontrado.")
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,52 @@
+RELATÓRIO DE TREINAMENTO - VENDAVAL
+============================================================
+Data/Hora: 2025-10-09 17:37:13
+
+MÉTRICAS DE PERFORMANCE:
+Acurácia: 0.733
+AUC-ROC: 0.739
+Cross-Validation AUC: 0.752 ± 0.011
+
+RELATÓRIO DE CLASSIFICAÇÃO:
+              precision    recall  f1-score   support
+
+           0       0.82      0.76      0.79       390
+           1       0.61      0.68      0.64       210
+
+    accuracy                           0.73       600
+   macro avg       0.71      0.72      0.71       600
+weighted avg       0.74      0.73      0.74       600
+
+
+MATRIZ DE CONFUSÃO:
+TN: 297, FP: 93
+FN: 67, TP: 143
+
+IMPORTÂNCIA DAS FEATURES:
+ 1. velocidade_vento          0.2934
+ 2. pressao_atmosferica       0.2513
+ 3. visibilidade              0.0654
+ 4. direcao_vento             0.0627
+ 5. temperatura_diferencial   0.0572
+ 6. cobertura_nuvens          0.0570
+ 7. umidade_relativa          0.0542
+ 8. idade_imovel              0.0494
+ 9. mes                       0.0349
+10. risco_construcao          0.0240
+11. estacao                   0.0156
+12. faixa_valor               0.0138
+13. tipo_residencia           0.0125
+14. regiao_metropolitana      0.0085
+
+ESTATÍSTICAS DOS DADOS:
+Total de amostras de teste: 600
+Classe positiva (sinistros): 210 (35.0%)
+Classe negativa (sem sinistro): 390 (65.0%)
+
+DISTRIBUIÇÃO DE PROBABILIDADES:
+0.0-0.1: 6 amostras
+0.1-0.3: 322 amostras
+0.3-0.5: 36 amostras
+0.5-0.7: 126 amostras
+0.7-0.9: 110 amostras
+0.9-1.0: 0 amostras

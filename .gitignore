@@ -1,23 +1,76 @@
-# Arquivos e diretórios a serem ignorados pelo Git
+# Radar de Sinistro - GitIgnore
 
-# API em desenvolvimento (temporário - não subir ainda)
-api/
-requirements_api.txt
-run_api.py
-start_api.bat
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Banco de dados com dados de teste/desenvolvimento
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Banco de dados
 *.db
 *.sqlite
 *.sqlite3
 radar_climatico.db
 weather_cache.db
 
-# Dados processados
+# Dados temporários e cache
 data/processed/
 data/cache/
-*.csv
-*.xlsx
+data/exports/
+logs/
+temp/
+tmp/
+
+# Arquivos de backup e teste
+*_backup.*
+*_test.*
+teste_*
+test_*
+
+# Modelos ML temporários
+*.pkl.tmp
+*.joblib.tmp
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+
+# Streamlit
+.streamlit/secrets.toml
 *.json
 *.parquet
 

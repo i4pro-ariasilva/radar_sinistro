@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS apolices (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     numero_apolice VARCHAR(50) UNIQUE NOT NULL,
     segurado VARCHAR(100) NOT NULL,
+    cd_produto INTEGER, -- código do produto (referência aos produtos)
     cep VARCHAR(9) NOT NULL,
     latitude REAL,
     longitude REAL,
@@ -18,7 +19,8 @@ CREATE TABLE IF NOT EXISTS apolices (
     probabilidade_sinistro DECIMAL(6,4), -- probabilidade estimada
     ativa BOOLEAN DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cd_produto) REFERENCES produtos(cd_produto)
 );
 
 -- Tabela de sinistros históricos
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS dados_climaticos (
 CREATE INDEX IF NOT EXISTS idx_apolices_cep ON apolices(cep);
 CREATE INDEX IF NOT EXISTS idx_apolices_coords ON apolices(latitude, longitude);
 CREATE INDEX IF NOT EXISTS idx_apolices_ativa ON apolices(ativa);
+CREATE INDEX IF NOT EXISTS idx_apolices_produto ON apolices(cd_produto);
 CREATE INDEX IF NOT EXISTS idx_sinistros_data ON sinistros_historicos(data_sinistro);
 CREATE INDEX IF NOT EXISTS idx_sinistros_apolice ON sinistros_historicos(apolice_id);
 CREATE INDEX IF NOT EXISTS idx_previsoes_data ON previsoes_risco(data_previsao);
@@ -133,4 +136,61 @@ CREATE TRIGGER IF NOT EXISTS trg_region_blocks_updated
 AFTER UPDATE ON region_blocks
 BEGIN
     UPDATE region_blocks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+-- ==================== NOVAS TABELAS: PRODUTOS E COBERTURAS ====================
+
+-- Tabela de produtos
+CREATE TABLE IF NOT EXISTS produtos (
+    cd_produto INTEGER PRIMARY KEY,
+    cd_ramo INTEGER NOT NULL,
+    nm_produto VARCHAR(100) NOT NULL,
+    dt_criacao DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela de coberturas
+CREATE TABLE IF NOT EXISTS coberturas (
+    cd_cobertura INTEGER PRIMARY KEY,
+    cd_produto INTEGER NOT NULL,
+    nm_cobertura VARCHAR(100) NOT NULL,
+    dv_basica BOOLEAN NOT NULL DEFAULT 0, -- 0 = adicional, 1 = básica
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cd_produto) REFERENCES produtos(cd_produto) ON DELETE CASCADE
+);
+
+-- Tabela de relacionamento apólice-cobertura
+CREATE TABLE IF NOT EXISTS apolice_cobertura (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cd_cobertura INTEGER NOT NULL,
+    cd_produto INTEGER NOT NULL,
+    nr_apolice VARCHAR(50) NOT NULL,
+    dt_inclusao DATE NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (cd_cobertura) REFERENCES coberturas(cd_cobertura) ON DELETE CASCADE,
+    FOREIGN KEY (cd_produto) REFERENCES produtos(cd_produto) ON DELETE CASCADE,
+    FOREIGN KEY (nr_apolice) REFERENCES apolices(numero_apolice) ON DELETE CASCADE
+);
+
+-- Índices para as novas tabelas
+CREATE INDEX IF NOT EXISTS idx_produtos_ramo ON produtos(cd_ramo);
+CREATE INDEX IF NOT EXISTS idx_coberturas_produto ON coberturas(cd_produto);
+CREATE INDEX IF NOT EXISTS idx_coberturas_basica ON coberturas(dv_basica);
+CREATE INDEX IF NOT EXISTS idx_apolice_cobertura_apolice ON apolice_cobertura(nr_apolice);
+CREATE INDEX IF NOT EXISTS idx_apolice_cobertura_produto ON apolice_cobertura(cd_produto);
+CREATE INDEX IF NOT EXISTS idx_apolice_cobertura_cobertura ON apolice_cobertura(cd_cobertura);
+
+-- Triggers para atualizar timestamps
+CREATE TRIGGER IF NOT EXISTS update_produtos_timestamp 
+    AFTER UPDATE ON produtos
+BEGIN
+    UPDATE produtos SET updated_at = CURRENT_TIMESTAMP WHERE cd_produto = NEW.cd_produto;
+END;
+
+CREATE TRIGGER IF NOT EXISTS update_coberturas_timestamp 
+    AFTER UPDATE ON coberturas
+BEGIN
+    UPDATE coberturas SET updated_at = CURRENT_TIMESTAMP WHERE cd_cobertura = NEW.cd_cobertura;
 END;

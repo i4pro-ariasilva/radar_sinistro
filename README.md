@@ -449,19 +449,9 @@ Utilize o padrão [Conventional Commits](https://www.conventionalcommits.org/):
 - `refactor:` Refatoração
 - `test:` Testes
 
-## 📄 Licença
-
-Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
-
-## 📞 Suporte
-
-- **Email**: ariasilva@i4pro.com.br
-- **GitHub Issues**: [Reportar Problemas](https://github.com/i4pro-ariasilva/radar_sinistro/issues)
-- **Documentação**: Disponível na interface web
-
 ---
 
-## � Principais Benefícios
+##  Principais Benefícios
 
 ✅ **Redução de Sinistralidade**: Predição antecipada de riscos  
 ✅ **Automação Inteligente**: Bloqueios e alertas automáticos  
@@ -481,6 +471,7 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 *Desenvolvido com ❤️ para o futuro das seguradoras*
 
 </div>
+
 
 
 

@@ -4,27 +4,46 @@ Sistema Inteligente de Predição de Riscos Climáticos
 
 Aplicação Streamlit para análise preditiva de sinistros
 baseada em dados climáticos e características de imóveis.
+
+Versão: 3.0 - Código Limpo e Organizado
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
+# Imports padrão
 import sys
 import os
 import json
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+
+# Imports para análise de dados
+import pandas as pd
+import numpy as np
+
+# Imports para visualização
+import streamlit as st
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Configurar path para módulos do sistema
 sys.path.append('.')
+
+# Imports de módulos do projeto
 from policy_management import show_manage_policies
-
-# Importar páginas de documentação da API
-from pages.api_documentation import show_api_documentation
+from pages.api_documentation import show_api_documentation  
 from pages.api_code_examples import show_code_examples
-
 from mapa_de_calor_completo import criar_interface_streamlit
+
+# Exportar as funções públicas para o namespace do módulo
+__all__ = ['show_manage_policies', 'show_api_documentation', 'show_code_examples', 'main']
+
+# Imports de utilitários (se disponíveis)
+try:
+    from utils.formatters import format_currency, format_percentage, format_score
+    from utils.validators import validate_cep, validate_email
+    from services.alertas_service import AlertasService
+    UTILS_AVAILABLE = True
+except ImportError:
+    UTILS_AVAILABLE = False
 
 # Configuração da página
 st.set_page_config(
@@ -137,8 +156,93 @@ st.markdown("""
         background-color: #e8f5e8 !important;
         color: #2e7d32 !important;
     }
+    
+    /* Alinhamento de botões de busca */
+    .search-button-container {
+        display: flex;
+        align-items: flex-end;
+        height: 100%;
+        padding-top: 1.5rem;
+    }
+    
+    /* Força alinhamento de botões em colunas - mais específico */
+    div[data-testid="column"] > div > div > button {
+        margin-top: 1.5rem;
+    }
+    
+    /* Alinhamento específico para form submit buttons */
+    .stForm > div > div[data-testid="column"]:last-child button {
+        margin-top: 1.875rem !important;
+    }
+    
+    /* Botões de busca em containers específicos */
+    .search-button {
+        margin-top: 1.875rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# FUNÇÕES UTILITÁRIAS
+# ============================================================
+
+def format_currency(value: float) -> str:
+    """Formata um valor como moeda brasileira"""
+    if UTILS_AVAILABLE:
+        from utils.formatters import format_currency as util_format_currency
+        return util_format_currency(value)
+    try:
+        return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return "R$ 0,00"
+
+
+def format_percentage(value: float, decimals: int = 1) -> str:
+    """Formata um valor como porcentagem"""
+    if UTILS_AVAILABLE:
+        from utils.formatters import format_percentage as util_format_percentage
+        return util_format_percentage(value, decimals)
+    try:
+        if 0 <= value <= 1:
+            percentage = value * 100
+        else:
+            percentage = value
+        return f"{percentage:.{decimals}f}%"
+    except (ValueError, TypeError):
+        return "0%"
+
+
+def validate_cep(cep: str) -> bool:
+    """Valida se um CEP está no formato correto"""
+    if UTILS_AVAILABLE:
+        from utils.validators import validate_cep as util_validate_cep
+        return util_validate_cep(cep)
+    if not cep:
+        return False
+    clean_cep = ''.join(filter(str.isdigit, cep))
+    return len(clean_cep) == 8
+
+
+def get_risk_level_emoji(score: float) -> str:
+    """Retorna emoji baseado no score de risco"""
+    if score >= 70:
+        return "🔴"
+    elif score >= 40:
+        return "🟡"
+    else:
+        return "🟢"
+
+
+def get_risk_level_text(score: float) -> str:
+    """Converte score numérico para texto de nível"""
+    if score >= 75:
+        return "Alto"
+    elif score >= 50:
+        return "Médio"
+    elif score >= 25:
+        return "Baixo"
+    else:
+        return "Muito Baixo"
 
 # ============================================================
 # FUNÇÕES DE ALERTAS AUTOMÁTICOS
@@ -199,13 +303,13 @@ def testar_envio_alerta(mensagem, canais):
         
         for canal in canais:
             if canal == "Email":
-                st.success(f"✅ {canal}: Alerta de teste enviado para admin@radarsinistro.com")
+                st.success(f"📧 {canal}: Alerta de teste enviado para admin@radarsinistro.com")
             elif canal == "SMS":
-                st.success(f"✅ {canal}: Alerta de teste enviado para +55 11 99999-9999")
+                st.success(f"📱 {canal}: Alerta de teste enviado para +55 11 99999-9999")
             elif canal == "WhatsApp":
-                st.success(f"✅ {canal}: Alerta de teste enviado via WhatsApp")
+                st.success(f"💬 {canal}: Alerta de teste enviado via WhatsApp")
             elif canal == "Sistema Interno":
-                st.success(f"✅ {canal}: Notificação criada no sistema")
+                st.success(f"🔔 {canal}: Notificação criada no sistema")
         
         return True
     except Exception as e:
@@ -409,11 +513,11 @@ def main():
         page = st.selectbox(
             "🧭 Navegação",
             [
-                " Apólices em Risco",
-                "➕ Gerenciar Apólices",
+                "📊 Apólices em Risco",
+                "📋 Gerenciar Apólices",
                 "🚨 Gerenciamento de Alertas",
                 "🚫 Gerenciamento de Bloqueios",
-                "🌡️ Monitoramento Climático",
+                "🌍 Monitoramento Climático",
                 "📚 Documentação da API",
                 "⚙️ Configurações",
                 "🗺️ Mapa de Calor"
@@ -430,22 +534,22 @@ def main():
         Sistema inteligente de predição de riscos climáticos para seguradoras.
         
         **Funcionalidades:**
-        - 🧠 Machine Learning
+        - 🤖 Machine Learning
         - 🌦️ Dados Climáticos
-        - 📊 Análise Preditiva
-        - 📈 Relatórios Detalhados
+        - 📈 Análise Preditiva
+        - 📄 Relatórios Detalhados
         """)
     
     # Roteamento de páginas
-    if page == " Apólices em Risco":
+    if page == "📊 Apólices em Risco":
         show_policies_at_risk()
-    elif page == "➕ Gerenciar Apólices":
+    elif page == "📋 Gerenciar Apólices":
         show_manage_policies()
     elif page == "🚨 Gerenciamento de Alertas":
         show_alert_management()
     elif page == "🚫 Gerenciamento de Bloqueios":
         show_blocking_management()
-    elif page == "🌡️ Monitoramento Climático":
+    elif page == "🌍 Monitoramento Climático":
         show_weather_monitoring()
     elif page == "📚 Documentação da API":
         show_api_documentation_section()
@@ -550,7 +654,7 @@ def get_coverage_risks_data(search_filter=None, risk_filter="Todos", type_filter
             # Mapear nomes de cobertura mais amigáveis
             coverage_names = {
                 1: "🌊 Alagamento",
-                2: "Vendaval", 
+                2: "🌪️ Vendaval", 
                 3: "🧊 Granizo",
                 4: "⚡ Danos Elétricos"
             }
@@ -586,7 +690,7 @@ def get_coverage_risks_data(search_filter=None, risk_filter="Todos", type_filter
 def show_policies_at_risk():
     """Página de Ranking de Coberturas em Risco"""
     
-    st.header("📋 Ranking de Coberturas em Risco")
+    st.header("📊 Ranking de Coberturas em Risco")
     
     # Seção de busca
     st.markdown("---")
@@ -601,14 +705,16 @@ def show_policies_at_risk():
         )
     
     with col2:
-        if st.button("🔍 Buscar", use_container_width=True):
+        # Usar markdown para criar espaçamento visual preciso
+        st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+        if st.button("🔍 Buscar", key="buscar_btn_coberturas", use_container_width=True):
             if search_policy:
                 st.success(f"Buscando coberturas da apólice: {search_policy}")
             else:
                 st.warning("Digite um número de apólice para buscar")
     
     # Filtros
-    st.markdown("### 🎛️ Filtros")
+    st.markdown("### 🔍 Filtros")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -640,7 +746,7 @@ def show_policies_at_risk():
     
     # Métricas resumidas
     st.markdown("---")
-    st.markdown("### 📈 Resumo das Coberturas (Últimas Análises)")
+    st.markdown("### 📊 Resumo das Coberturas (Últimas Análises)")
     
     col1, col2, col3, col4, col5 = st.columns(5)
     
@@ -708,16 +814,16 @@ def show_policies_at_risk():
             if st.button("🔄 Atualizar Lista", 
                         help="Clique para atualizar a lista de coberturas com os dados mais recentes", 
                         type="secondary",
-                        use_container_width=True):
+                        width='stretch'):
                 st.rerun()
         
         # Exibir tabela com estilo
         styled_df = display_df.style.apply(highlight_risk, axis=1)
-        st.dataframe(styled_df, use_container_width=True, height=400)
+        st.dataframe(styled_df, width='stretch', height=400)
         
         # Detalhes da cobertura selecionada
         st.markdown("---")
-        st.markdown("### 🔍 Detalhes da Cobertura")
+        st.markdown("### 📋 Detalhes da Cobertura")
         
         # Criar opções para seleção
         coverage_options = []
@@ -737,14 +843,14 @@ def show_policies_at_risk():
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("#### 📋 Informações da Apólice")
+                st.markdown("#### 📄 Informações da Apólice")
                 st.write(f"**Número da Apólice:** {coverage_details['nr_apolice']}")
                 st.write(f"**Segurado:** {coverage_details['segurado']}")
                 st.write(f"**Tipo de Imóvel:** {coverage_details['tipo_residencia'].title()}")
                 st.write(f"**CEP:** {coverage_details['cep']}")
                 st.write(f"**Valor Segurado:** R$ {coverage_details['valor_segurado']:,.2f}")
                 
-                st.markdown("#### 🏠 Score Médio da Apólice")
+                st.markdown("#### 📊 Score Médio da Apólice")
                 avg_score = coverage_details['score_medio_apolice']
                 st.metric("Score Médio", f"{avg_score:.1f}/100", 
                          f"Nível: {get_risk_level_text(avg_score)}")
@@ -767,13 +873,13 @@ def show_policies_at_risk():
                     else:
                         st.success("✅ Esta cobertura tem risco ABAIXO da média da apólice")
                 else:
-                    st.info("📊 Esta cobertura está próxima da média da apólice")
+                    st.info("ℹ️ Esta cobertura está próxima da média da apólice")
         
         # Botão para refazer análise da cobertura selecionada
         st.markdown("---")
         st.markdown("### 🔄 Refazer Análise da Cobertura")
         
-        if st.button("🔄 Refazer Análise desta Cobertura", use_container_width=True, type="primary"):
+        if st.button("🔄 Refazer Análise desta Cobertura", width='stretch', type="primary"):
             selected_idx = coverage_options.index(selected_coverage_option)
             coverage_details = df.iloc[selected_idx]
             
@@ -799,7 +905,7 @@ def show_policies_at_risk():
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            st.info(f"**📝 Apólice:** {coverage_details['nr_apolice']}")
+                            st.info(f"**📄 Apólice:** {coverage_details['nr_apolice']}")
                             st.info(f"**🛡️ Cobertura:** {coverage_details['nome_cobertura']}")
                         
                         with col2:
@@ -819,20 +925,20 @@ def show_policies_at_risk():
                                 else:
                                     st.success(f"{diff_icon} **Risco DIMINUIU:** {old_score:.1f} → {new_score:.1f}")
                                     
-                                st.info(f"🎯 **Novo nível:** {result['new_level'].title()}")
-                                st.info(f"📊 **Nova probabilidade:** {result['new_probability']*100:.1f}%")
+                                st.info(f"📊 **Novo nível:** {result['new_level'].title()}")
+                                st.info(f"📈 **Nova probabilidade:** {result['new_probability']*100:.1f}%")
                             else:
-                                st.info("📊 Score permaneceu similar após recálculo")
+                                st.info("ℹ️ Score permaneceu similar após recálculo")
                                 st.metric("Score de Risco", f"{new_score:.1f}/100", "sem mudança significativa")
                     
                     st.info("🔄 **Atualize a página** para ver os novos dados na tabela principal")
                     
                 else:
                     st.error(f"❌ Erro ao recalcular análise: {result.get('error', 'Erro desconhecido')}")
-                    st.warning("💡 Tente novamente ou verifique os logs do sistema")
+                    st.warning("⚠️ Tente novamente ou verifique os logs do sistema")
     else:
-        st.warning("⚠️ Nenhuma cobertura analisada encontrada.")
-        st.info("� Use a seção 'Análise de Riscos' para gerar análises de coberturas!")
+        st.warning("📝 Nenhuma cobertura analisada encontrada.")
+        st.info("💡 Use a seção 'Análise de Riscos' para gerar análises de coberturas!")
 
 def reanalizar_cobertura_especifica(nr_apolice, cd_cobertura, nome_cobertura):
     """Recalcular e persistir análise para uma cobertura específica"""
@@ -1324,13 +1430,13 @@ def get_real_policies_data(search_filter=None, risk_filter="Todos", type_filter=
         if filtered_policies:
             st.success(f"✅ Mostrando {len(filtered_policies)} apólices REAIS do banco de dados!")
             if len(policies) > len(filtered_policies):
-                st.info(f"📊 Filtrado de {len(policies)} apólices totais")
+                st.info(f"ℹ️ Filtrado de {len(policies)} apólices totais")
         
         return filtered_policies
         
     except Exception as e:
         st.error(f"❌ Erro ao conectar com banco de dados: {e}")
-        st.warning("🔄 Usando dados simulados como fallback...")
+        st.warning("⚠️ Usando dados simulados como fallback...")
         # Fallback para dados simulados
         return generate_mock_policies_data(search_filter, risk_filter, type_filter, value_filter)
 
@@ -1341,14 +1447,14 @@ def get_risk_level_emoji(score):
     elif score >= 50:
         return "🟡 Médio"
     elif score >= 25:
-        return "🔵 Baixo"
+        return "🟢 Baixo"
     else:
-        return "🟢 Muito Baixo"
+        return "⚪ Muito Baixo"
 
 def format_risk_level_from_db(nivel_risco_db):
     """Converter nivel_risco do banco para formato de exibição"""
     if not nivel_risco_db:
-        return "🔵 Baixo"
+        return "🟢 Baixo"
     
     nivel = nivel_risco_db.lower()
     if nivel == 'alto':
@@ -1356,11 +1462,11 @@ def format_risk_level_from_db(nivel_risco_db):
     elif nivel == 'medio':
         return "🟡 Médio"
     elif nivel == 'baixo':
-        return "🔵 Baixo"
+        return "🟢 Baixo"
     elif nivel == 'muito_baixo':
-        return "🟢 Muito Baixo"
+        return "⚪ Muito Baixo"
     else:
-        return "🔵 Baixo"  # padrão
+        return "🟢 Baixo"  # padrão
 
 # FUNÇÃO REMOVIDA - Estatísticas foi excluída do projeto  
 # def show_statistics():
@@ -1409,7 +1515,7 @@ def format_risk_level_from_db(nivel_risco_db):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📈 Distribuição de Scores de Risco")
+        st.subheader("📊 Distribuição de Scores de Risco")
         
         # Simulação de dados de distribuição
         import numpy as np
@@ -1429,7 +1535,7 @@ def format_risk_level_from_db(nivel_risco_db):
         fig.add_vline(x=50, line_dash="dash", line_color="orange", annotation_text="Médio Risco")
         fig.add_vline(x=75, line_dash="dash", line_color="red", annotation_text="Alto Risco")
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     with col2:
         st.subheader("🏠 Análises por Tipo de Residência")
@@ -1444,7 +1550,7 @@ def format_risk_level_from_db(nivel_risco_db):
             title="Distribuição por Tipo de Residência"
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     # Tabela de análises recentes
     st.markdown("---")
@@ -1462,9 +1568,9 @@ def format_risk_level_from_db(nivel_risco_db):
         score = np.random.randint(15, 90)
         
         if score < 25:
-            risco = "🟢 Muito Baixo"
+            risco = "⚪ Muito Baixo"
         elif score < 50:
-            risco = "🔵 Baixo"
+            risco = "🟢 Baixo"
         elif score < 75:
             risco = "🟡 Médio"
         else:
@@ -1479,20 +1585,22 @@ def format_risk_level_from_db(nivel_risco_db):
         })
     
     df = pd.DataFrame(recent_data)
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width='stretch')
 
 def show_weather_monitoring():
     """Página de monitoramento climático"""
-    st.header("🌡️ Monitoramento Climático")
+    st.header("🌍 Monitoramento Climático")
     
     # Input de localização
     col1, col2 = st.columns([2, 1])
     
     with col1:
-        cep_weather = st.text_input("🏠 CEP para monitoramento climático", placeholder="12345-678", key="cep_monitoramento_clima")
+        cep_weather = st.text_input("🌍 CEP para monitoramento climático", placeholder="12345-678", key="cep_monitoramento_clima")
     
     with col2:
-        if st.button("🔍 Buscar Dados Climáticos", use_container_width=True):
+        # Usar markdown para criar espaçamento visual preciso
+        st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+        if st.button("🔍 Buscar Dados Climáticos", key="buscar_clima_btn", use_container_width=True):
             if cep_weather and len(cep_weather.replace("-", "")) == 8:
                 st.success("✅ CEP válido - buscando dados...")
             else:
@@ -1516,7 +1624,7 @@ def show_weather_monitoring():
                 
                 if weather_data and weather_data.current:
                     # Dados climáticos atuais
-                    st.subheader(f"🌍 Condições Atuais - CEP {cep_weather}")
+                    st.subheader(f"🌤️ Condições Atuais - CEP {cep_weather}")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     
@@ -1544,7 +1652,7 @@ def show_weather_monitoring():
                     if temp > 35:
                         alertas.append("🔥 Temperatura extremamente alta - risco de incêndio")
                     elif temp < 5:
-                        alertas.append("🧊 Temperatura muito baixa - risco de congelamento")
+                        alertas.append("🥶 Temperatura muito baixa - risco de congelamento")
                     
                     if precip > 20:
                         alertas.append("🌊 Precipitação intensa - risco de alagamento")
@@ -1555,7 +1663,7 @@ def show_weather_monitoring():
                         alertas.append("🌪️ Ventos muito fortes - risco estrutural")
                     
                     if humidity > 80:
-                        alertas.append("💨 Umidade muito alta - risco de mofo")
+                        alertas.append("💧 Umidade muito alta - risco de mofo")
                     
                     if alertas:
                         for alerta in alertas:
@@ -1579,7 +1687,7 @@ def show_weather_monitoring():
             # Dados simulados
             import random
             
-            st.subheader(f"🌍 Condições Climáticas Simuladas - CEP {cep_weather}")
+            st.subheader(f"🌤️ Condições Climáticas Simuladas - CEP {cep_weather}")
             st.info("ℹ️ Dados simulados para demonstração")
             
             col1, col2, col3, col4 = st.columns(4)
@@ -1622,7 +1730,7 @@ def show_weather_monitoring():
                 markers=True
             )
             fig.update_traces(line_color='orange')
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         
         with col2:
             # Gráfico de precipitação
@@ -1637,11 +1745,11 @@ def show_weather_monitoring():
                 color=precips,
                 color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         
         # Análise de Risco climático
         st.markdown("---")
-        st.subheader("🎯 Análise de Risco Climático")
+        st.subheader("⚠️ Análise de Risco Climático")
         
         # Calcular score de risco climático
         risco_temp = min(100, max(0, abs(temp - 25) * 4)) if 'temp' in locals() else 20
@@ -1672,10 +1780,10 @@ def show_weather_monitoring():
                 }
             ))
             fig.update_layout(height=300)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         
         with col2:
-            st.markdown("#### � Fatores de Risco")
+            st.markdown("#### ⚠️ Fatores de Risco")
             
             fatores_risco = {
                 "🌡️ Temperatura": risco_temp,
@@ -1710,16 +1818,16 @@ def show_weather_monitoring():
             recomendacoes.append("🛡️ Considerar medidas preventivas adicionais")
         
         if risco_temp > 50:
-            recomendacoes.append("🌡️ Verificar isolamento térmico da propriedade")
+            recomendacoes.append("🏠 Verificar isolamento térmico da propriedade")
         
         if risco_precip > 50:
-            recomendacoes.append("🌧️ Inspecionar sistema de drenagem")
+            recomendacoes.append("🚰 Inspecionar sistema de drenagem")
         
         if risco_vento > 50:
-            recomendacoes.append("💨 Verificar fixação de estruturas externas")
+            recomendacoes.append("🔧 Verificar fixação de estruturas externas")
         
         if risco_umidade > 50:
-            recomendacoes.append("💧 Melhorar ventilação para controle de umidade")
+            recomendacoes.append("💨 Melhorar ventilação para controle de umidade")
         
         if not recomendacoes:
             recomendacoes.append("✅ Condições climáticas favoráveis - manter monitoramento regular")
@@ -1747,7 +1855,7 @@ def show_weather_monitoring():
         
         with col2:
             st.markdown("""
-            ### 🌊 Região Costeira
+            ### 🏖️ Região Costeira
             **Status:** Online  
             **Estações:** 23 ativas  
             **Última atualização:** Há 3 min
@@ -1763,10 +1871,10 @@ def show_weather_monitoring():
         
         # Alertas gerais
         st.markdown("---")
-        st.subheader("🚨 Alertas Meteorológicos Gerais")
+        st.subheader("⚠️ Alertas Meteorológicos Gerais")
         
-        st.warning("⚠️ Previsão de chuva forte para região metropolitana de SP - Próximas 6h")
-        st.info("ℹ️ Frente fria se aproximando do litoral sul - Temperatura pode cair 8°C")
+        st.warning("🌧️ Previsão de chuva forte para região metropolitana de SP - Próximas 6h")
+        st.info("❄️ Frente fria se aproximando do litoral sul - Temperatura pode cair 8°C")
         st.success("✅ Condições estáveis na região serrana - Tempo bom para os próximos 3 dias")
 
 
@@ -1785,16 +1893,16 @@ def show_api_documentation_section():
     
     # Sub-navegação para a API
     api_section = st.selectbox(
-        "🔍 Selecione a seção:",
+        "📋 Selecione a seção:",
         [
-            "📖 Documentação Completa",
+            "📚 Documentação Completa",
             "💻 Exemplos de Código"
         ]
     )
     
     st.markdown("---")
     
-    if api_section == "📖 Documentação Completa":
+    if api_section == "📚 Documentação Completa":
         show_api_documentation()
     elif api_section == "💻 Exemplos de Código":
         show_code_examples()
@@ -1805,7 +1913,7 @@ def show_settings():
     st.header("⚙️ Configurações do Sistema")
     
     # Configurações de predição
-    st.subheader("🎯 Configurações de Predição")
+    st.subheader("⚙️ Configurações de Predição")
     
     col1, col2 = st.columns(2)
     
@@ -1832,7 +1940,7 @@ def show_settings():
     )
     
     if alertas_automaticos_ativo:
-        st.info("🤖 **Modo Automático Ativado:** O sistema enviará alertas automaticamente conforme configurado abaixo.")
+        st.info("ℹ️ **Modo Automático Ativado:** O sistema enviará alertas automaticamente conforme configurado abaixo.")
         
         col1, col2 = st.columns(2)
         
@@ -1862,7 +1970,7 @@ def show_settings():
             )
         
         with col2:
-            st.markdown("#### 📧 Configurações da Mensagem")
+            st.markdown("#### ⚙️ Configurações da Mensagem")
             
             # Assunto do email/SMS
             assunto_alerta = st.text_input(
@@ -1908,7 +2016,7 @@ Identificamos que sua apólice {numero_apolice} apresenta ALTO RISCO de sinistro
 • Valor Segurado: R$ {valor_segurado:,.2f}
 • Nível de Risco: {nivel_risco}
 
-⚠️ RECOMENDAÇÕES:
+💡 RECOMENDAÇÕES:
 • Verifique as condições do imóvel
 • Reforce medidas preventivas
 • Entre em contato conosco para orientações
@@ -1977,7 +2085,7 @@ Data: {data_atual}"""
         col1, col2, col3 = st.columns(3)
         
         with col1:
-            if st.button("💾 Salvar Configurações de Alertas", use_container_width=True):
+            if st.button("💾 Salvar Configurações de Alertas", width='stretch'):
                 # Aqui você salvaria as configurações no banco de dados
                 configuracoes_alertas = {
                     'ativo': alertas_automaticos_ativo,
@@ -1998,7 +2106,7 @@ Data: {data_atual}"""
                 st.success("✅ Configurações de alertas automáticos salvas com sucesso!")
         
         with col2:
-            if st.button("🧪 Testar Configuração", use_container_width=True):
+            if st.button("🧪 Testar Configuração", width='stretch'):
                 with st.spinner("Enviando alerta de teste..."):
                     resultado_teste = testar_envio_alerta(mensagem_personalizada_auto, canal_envio)
                     if resultado_teste:
@@ -2007,7 +2115,7 @@ Data: {data_atual}"""
                         st.error("❌ Falha no teste de envio de alerta")
         
         with col3:
-            if st.button("📊 Executar Agora", use_container_width=True):
+            if st.button("🚀 Executar Agora", width='stretch'):
                 with st.spinner("Executando envio automático de alertas..."):
                     resultado = executar_alertas_automaticos(configuracoes_alertas)
                     if resultado['sucesso']:
@@ -2018,7 +2126,7 @@ Data: {data_atual}"""
                         st.error("❌ Falha na execução dos alertas automáticos")
     
     else:
-        st.warning("⚠️ Alertas automáticos estão desativados. Ative a opção acima para configurar.")
+        st.warning("ℹ️ Alertas automáticos estão desativados. Ative a opção acima para configurar.")
 
     # Informações do sistema
     st.markdown("---")
@@ -2153,7 +2261,9 @@ def show_bloqueio_cobertura():
         )
     
     with col2:
-        buscar_apolice = st.button("🔍 Buscar Apólice", use_container_width=True)
+        # Usar markdown para criar espaçamento visual preciso
+        st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+        buscar_apolice = st.button("🔍 Buscar Apólice", key="buscar_apolice_bloqueio_btn", use_container_width=True)
     
     # Variáveis para armazenar dados da apólice
     apolice_data = None
@@ -2187,7 +2297,7 @@ def show_bloqueio_cobertura():
             with col2:
                 if produto_info:
                     st.info(f"""
-                    **🏷️ Produto:**
+                    **🛡️ Produto:**
                     - **Nome:** {produto_info.get('nm_produto', 'N/A')}
                     - **Ramo:** {produto_info.get('nm_ramo', 'N/A')}
                     """)
@@ -2763,7 +2873,7 @@ def show_visualizar_bloqueios():
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        atualizar = st.button("🔄 Atualizar Lista", use_container_width=True)
+        atualizar = st.button("🔄 Atualizar Lista", width='stretch')
     
     if tipo_bloqueio == "Todos" or tipo_bloqueio == "Coberturas":
         st.subheader("🚫 Bloqueios de Cobertura")
@@ -2777,7 +2887,7 @@ def show_visualizar_bloqueios():
             # Exibir tabela
             st.dataframe(
                 df_bloqueios[['nr_apolice', 'cd_produto', 'cd_cobertura', 'data_inicio', 'data_fim']],
-                use_container_width=True
+                width='stretch'
             )
             
             # Opção para desativar bloqueios
@@ -2811,7 +2921,7 @@ def show_visualizar_bloqueios():
             # Exibir tabela
             st.dataframe(
                 df_regionais[['cep', 'data_inicio', 'data_fim', 'motivo']],
-                use_container_width=True
+                width='stretch'
             )
             
             # Opção para desativar bloqueios
@@ -2849,18 +2959,20 @@ def show_alert_management():
         search_policy = st.text_input(
             "Buscar Apólice", 
             placeholder="Digite o número da apólice (ex: POL-2025-001234) ou deixe vazio para listar todas",
-            help="Busque uma apólice específica pelo número ou deixe vazio para ver todas"
+            help="Busque uma apólice específica pelo número ou deixe vazio para ver todas",
+            key="search_policy_alertas"
         )
 
     with col2:
-        st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
-        search_button = st.button("🔍 Buscar", use_container_width=True)
+        # Usar markdown para criar espaçamento visual preciso
+        st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+        search_button = st.button("🔍 Buscar", key="buscar_alertas_btn", use_container_width=True)
 
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)  # Espaçamento vertical
     
     # Filtros avançados
-    st.markdown("### 🎛️ Filtros de Busca")
+    st.markdown("### 🔍 Filtros de Busca")
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -2942,7 +3054,7 @@ def show_alert_management():
             notificacoes_map = {}
 
         # Aplicar filtro de notificação
-        df['notified_today'] = df['policy_number'].apply(lambda p: '✅' if p in notificacoes_map else '—')
+        df['notified_today'] = df['policy_number'].apply(lambda p: '?' if p in notificacoes_map else '—')
 
         if notified_filter == "Já Notificadas Hoje":
             df = df[df['notified_today'] == '✅']
@@ -2975,7 +3087,7 @@ def show_alert_management():
         
         # Seção de envio de notificações
         st.markdown("---")
-        st.subheader("✉️ Envio de Notificações")
+        st.subheader("?? Envio de Notificações")
         
         # Seleção de apólices para notificar
         if 'selected_alert_policies' not in st.session_state:
@@ -2985,11 +3097,11 @@ def show_alert_management():
         col1, col2 = st.columns(2)
         
         with col1:
-            if st.button("Selecionar Todas", use_container_width=True):
+            if st.button("Selecionar Todas", width='stretch'):
                 st.session_state.selected_alert_policies = df['policy_number'].tolist()
         
         with col2:
-            if st.button("Limpar Seleção", use_container_width=True):
+            if st.button("Limpar Seleção", width='stretch'):
                 st.session_state.selected_alert_policies = []
         
         # Multiselect para seleção manual
@@ -3010,7 +3122,7 @@ def show_alert_management():
         st.session_state.selected_alert_policies = selected_policies
         
         # Configuração da mensagem
-        st.markdown("#### 📝 Configuração da Mensagem")
+        st.markdown("#### ?? Configuração da Mensagem")
         st.markdown("""
 <small>Você pode personalizar a mensagem enviada ao segurado. Variáveis disponíveis:<br>
 <code>{segurado}</code>, <code>{numero_apolice}</code>, <code>{nivel_risco}</code>, <code>{score_risco}</code>, <code>{tipo_residencia}</code>, <code>{cep}</code>
@@ -3035,7 +3147,7 @@ def show_alert_management():
 
         # Pré-visualização da mensagem
         if selected_policies:
-            st.markdown("#### 👁️ Pré-visualização")
+            st.markdown("#### ??? Pré-visualização")
             preview_policy = selected_policies[0]
             preview_row = df[df['policy_number'] == preview_policy].iloc[0]
 
@@ -3052,21 +3164,21 @@ def show_alert_management():
             st.caption(f"Pré-visualização baseada na apólice: {preview_policy}")
             
             # Botão de envio
-            st.markdown("#### 🚀 Enviar Notificações")
+            st.markdown("#### ?? Enviar Notificações")
             
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                st.info(f"📊 {len(selected_policies)} apólice(s) selecionada(s) para notificação")
+                st.info(f"?? {len(selected_policies)} apólice(s) selecionada(s) para notificação")
             
             with col2:
-                if st.button("🚨 Enviar Alertas", type="primary", use_container_width=True):
+                if st.button("?? Enviar Alertas", type="primary", width='stretch'):
                     send_alert_notifications(selected_policies, df, mensagem_personalizada, notificacoes_map)
         else:
-            st.warning("⚠️ Selecione pelo menos uma apólice para enviar notificações.")
+            st.warning("?? Selecione pelo menos uma apólice para enviar notificações.")
         
     else:
-        st.info("📭 Nenhuma apólice encontrada com os critérios de busca especificados.")
+        st.info("?? Nenhuma apólice encontrada com os critérios de busca especificados.")
         st.markdown("**Sugestões:**")
         st.markdown("- Verifique se o número da apólice está correto")
         st.markdown("- Tente ajustar os filtros de busca")
@@ -3140,19 +3252,19 @@ def send_alert_notifications(selected_policies, df, mensagem_personalizada, noti
         
         # Mostrar resultados
         if enviados:
-            st.success(f"✅ {len(enviados)} notificação(ões) enviada(s) com sucesso!")
+            st.success(f"? {len(enviados)} notificação(ões) enviada(s) com sucesso!")
             with st.expander("Apólices notificadas"):
                 for policy in enviados:
                     st.write(f"• {policy}")
         
         if ja_notificados:
-            st.info(f"ℹ️ {len(ja_notificados)} apólice(s) já havia(m) sido notificada(s) hoje:")
+            st.info(f"?? {len(ja_notificados)} apólice(s) já havia(m) sido notificada(s) hoje:")
             with st.expander("Apólices já notificadas"):
                 for policy in ja_notificados:
                     st.write(f"• {policy}")
         
         if erros:
-            st.error(f"❌ {len(erros)} erro(s) no envio:")
+            st.error(f"? {len(erros)} erro(s) no envio:")
             with st.expander("Erros detalhados"):
                 for policy, erro in erros:
                     st.write(f"• {policy}: {erro}")
@@ -3175,19 +3287,19 @@ def show_mapa_calor():
         policies_data = get_real_policies_data()
         
         if not policies_data:
-            st.warning("⚠️ Nenhuma apólice encontrada no banco de dados.")
-            st.info("💡 Adicione apólices através de 'Gerenciar Apólices' para ver o mapa!")
+            st.warning("?? Nenhuma apólice encontrada no banco de dados.")
+            st.info("?? Adicione apólices através de 'Gerenciar Apólices' para ver o mapa!")
             
             # Botão para ir para gerenciar apólices
-            if st.button("➕ Ir para Gerenciar Apólices", use_container_width=True):
-                st.session_state.page_redirect = "➕ Gerenciar Apólices"
+            if st.button("? Ir para Gerenciar Apólices", width='stretch'):
+                st.session_state.page_redirect = "? Gerenciar Apólices"
                 st.rerun()
             
             # Oferecer dados de exemplo
             st.markdown("---")
-            st.subheader("📊 Ou visualize com dados de exemplo:")
+            st.subheader("?? Ou visualize com dados de exemplo:")
             
-            if st.button("🎭 Gerar Mapa com Dados de Exemplo", use_container_width=True):
+            if st.button("?? Gerar Mapa com Dados de Exemplo", width='stretch'):
                 with st.spinner("Gerando mapa com dados simulados..."):
                     # Gerar DataFrame de exemplo para o mapa de calor
                     import pandas as pd
@@ -3224,12 +3336,156 @@ def show_mapa_calor():
         criar_interface_streamlit(policies_df)
         
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {e}")
-        st.warning("🔄 Usando dados de exemplo...")
+        st.error(f"? Erro ao carregar dados: {e}")
+        st.warning("?? Usando dados de exemplo...")
         
         # Fallback para dados de exemplo
-        import pandas as pd
         criar_interface_streamlit(pd.DataFrame())
+
+
+def main():
+    """
+    Função principal da aplicação Radar de Sinistro
+    Centraliza a lógica de navegação e renderização
+    """
+    try:
+        # Cabeçalho principal
+        render_main_header()
+        
+        # Navegação e páginas
+        render_navigation()
+        
+    except Exception as e:
+        st.error(f"? Erro crítico na aplicação: {str(e)}")
+        st.info("?? Recarregue a página ou entre em contato com o suporte.")
+
+
+def render_main_header():
+    """Renderiza o cabeçalho principal da aplicação"""
+    st.markdown("""
+    <div class="main-header">
+        <h1>🌦️ Radar de Sinistro v3.0</h1>
+        <p>Sistema Inteligente de Predição de Riscos Climáticos</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_navigation():
+    """Renderiza a navegação principal da aplicação"""
+    # Sidebar para navegação
+    st.sidebar.title("🧭 Navegação")
+    
+    page = st.sidebar.selectbox(
+        "Selecione uma seção:",
+        [
+            "🏠 Dashboard Principal",
+            "🎯 Análise de Riscos", 
+            "📋 Gestão de Apólices",
+            "📊 Coberturas em Risco",
+            "🌍 Monitoramento Climático",
+            "🗺️ Mapa de Calor",
+            "📚 Documentação da API",
+            "💻 Exemplos de Código",
+            "⚙️ Configurações"
+        ]
+    )
+    
+    # Renderizar página selecionada
+    render_selected_page(page)
+
+
+def render_selected_page(page: str):
+    """
+    Renderiza a página selecionada na navegação
+    
+    Args:
+        page: Nome da página selecionada
+    """
+    if page == "🏠 Dashboard Principal":
+        show_dashboard_main()
+    elif page == "🎯 Análise de Riscos":
+        show_policies_at_risk()  # Mapear para análise de riscos existente
+    elif page == "📋 Gestão de Apólices":
+        show_manage_policies()
+    elif page == "📊 Coberturas em Risco":
+        show_policies_at_risk()
+    elif page == "🌍 Monitoramento Climático":
+        show_weather_monitoring()
+    elif page == "🗺️ Mapa de Calor":
+        show_mapa_calor()
+    elif page == "📚 Documentação da API":
+        show_api_documentation()
+    elif page == "💻 Exemplos de Código":
+        show_code_examples()
+    elif page == "⚙️ Configurações":
+        show_settings()
+
+
+def show_dashboard_main():
+    """Dashboard principal com visão geral do sistema"""
+    st.header("🏠 Dashboard Principal")
+    
+    # Métricas principais
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        total_policies = safe_get_total_policies()
+        st.metric("📋 Apólices Ativas", total_policies, "🔼 +12")
+    
+    with col2:
+        active_alerts = safe_get_active_alerts_count()
+        st.metric("⚠️ Alertas Ativos", active_alerts, "🔻 -3")
+        
+    with col3:
+        st.metric("🌦️ Monitoramento", "Ativo", "✅")
+        
+    with col4:
+        coverage_count = safe_get_coverage_count()
+        st.metric("📊 Coberturas", coverage_count, "➡️ 0")
+    
+    # Gráficos resumo
+    st.subheader("📊 Visão Geral dos Riscos")
+    
+    # Mostrar resumo das coberturas em risco
+    show_policies_at_risk()
+
+
+def safe_get_total_policies():
+    """Obtém o total de apólices de forma segura"""
+    try:
+        # Tentar usar a função existente se disponível
+        if 'get_real_policies_data' in globals():
+            policies = get_real_policies_data()
+            return len(policies) if policies else 0
+        return "N/A"
+    except Exception:
+        return "N/A"
+
+
+def safe_get_active_alerts_count():
+    """Obtém a contagem de alertas ativos de forma segura"""
+    try:
+        # Tentar obter alertas do banco de dados ou memória
+        import sqlite3
+        db_path = "dados_radar_sinistro.db"
+        
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM alertas WHERE ativo = 1")
+            count = cursor.fetchone()[0]
+            return count
+    except Exception:
+        return 0
+
+
+def safe_get_coverage_count():
+    """Obtém a contagem de coberturas de forma segura"""
+    try:
+        # Retornar um valor básico por enquanto
+        return "4"  # Alagamento, Granizo, Vendaval, Danos Elétricos
+    except Exception:
+        return "N/A"
+
 
 if __name__ == "__main__":
     main()

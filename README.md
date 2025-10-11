@@ -190,7 +190,7 @@ O sistema utiliza modelos específicos para cada tipo de cobertura:
 #### ⚡ Danos Elétricos  
 - **Precisão**: AUC 0.861
 - **Características**: Tempestades, descargas elétricas, umidade
-- **Modelo**: `models/danos elétricos_model.pkl`
+- **Modelo**: `models/danos_eletricos_model.pkl`
 
 #### 🧊 Granizo
 - **Precisão**: AUC 0.838

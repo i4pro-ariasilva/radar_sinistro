@@ -709,7 +709,7 @@ def show_individual_policy_form():
         col1, col2, col3 = st.columns([1, 1, 1])
         
         with col2:
-            submitted = st.form_submit_button("🔮 Calcular Risco e Salvar", use_container_width=True)
+            submitted = st.form_submit_button("🔮 Calcular Risco e Salvar", width='stretch')
     
     # Processar formulário
     if submitted:
@@ -967,12 +967,12 @@ def show_batch_policy_upload():
             
             # Mostrar preview das apólices
             st.markdown("### Preview dos Dados - Apólices")
-            st.dataframe(df.head(10), use_container_width=True)
+            st.dataframe(df.head(10), width='stretch')
             
             # Mostrar preview das coberturas se disponível
             if df_coberturas is not None and not df_coberturas.empty:
                 st.markdown("### Preview dos Dados - Coberturas")
-                st.dataframe(df_coberturas.head(10), use_container_width=True)
+                st.dataframe(df_coberturas.head(10), width='stretch')
             
             # Validar dados das apólices
             required_columns = ['numero_apolice', 'segurado', 'nome_produto', 'cep', 'valor_segurado', 'data_inicio', 'tipo_residencia']
@@ -1010,7 +1010,7 @@ def show_batch_policy_upload():
             st.success(f"✅ Validação concluída: {len(df)} apólices válidas para processamento")
             
             # Botão para processar lote
-            if st.button("Processar Lote Completo", use_container_width=True):
+            if st.button("Processar Lote Completo", width='stretch'):
                 process_batch_policies(df, df_coberturas)
                 
         except Exception as e:
@@ -1065,7 +1065,7 @@ def show_batch_policy_upload():
         'telefone': ['(11) 98765-4321', '(21) 99876-5432', '(31) 97654-3210']
     })
     
-    st.dataframe(template_data, use_container_width=True)
+    st.dataframe(template_data, width='stretch')
     
     # Template de coberturas
     st.markdown("#### Template de Coberturas")
@@ -1074,7 +1074,7 @@ def show_batch_policy_upload():
         'nome_cobertura': ['Incêndio', 'Vendaval', 'Incêndio', 'Danos Elétricos', 'Roubo']
     })
     
-    st.dataframe(template_coberturas, use_container_width=True)
+    st.dataframe(template_coberturas, width='stretch')
     
     # Criar arquivo Excel com duas planilhas
     try:
@@ -1417,13 +1417,13 @@ def process_batch_policies(df, df_coberturas=None):
         if successful_policies:
             st.markdown("#### ✅ Apólices Processadas com Sucesso")
             success_df = pd.DataFrame(successful_policies)
-            st.dataframe(success_df, use_container_width=True)
+            st.dataframe(success_df, width='stretch')
         
         # Mostrar falhas
         if failed_policies:
             st.markdown("#### ❌ Apólices com Falha")
             failed_df = pd.DataFrame(failed_policies)
-            st.dataframe(failed_df, use_container_width=True)
+            st.dataframe(failed_df, width='stretch')
 
 def show_updated_ranking():
     """Mostra ranking atualizado de apólices por risco"""
@@ -1534,7 +1534,7 @@ def show_updated_ranking():
             
             st.dataframe(
                 display_df,
-                use_container_width=True,
+                width='stretch',
                 height=400
             )
             
@@ -1646,7 +1646,7 @@ def show_existing_policy_analysis():
                 help="Escolha quais coberturas devem ser analisadas"
             )
             
-            if st.button("🔬 Executar Análise Climática", use_container_width=True):
+            if st.button("🔬 Executar Análise Climática", width='stretch'):
                 if selected_coverages:
                     # Preparar dados da apólice
                     policy_data = {
@@ -1738,7 +1738,7 @@ def show_spot_analysis():
             help="Escolha quais coberturas devem ser analisadas"
         )
         
-        submitted = st.form_submit_button("🔬 Executar Análise", use_container_width=True)
+        submitted = st.form_submit_button("🔬 Executar Análise", width='stretch')
     
     if submitted and selected_coverages:
         # Preparar dados
@@ -1873,7 +1873,7 @@ def show_detailed_climate_results(coverage_risk_data):
             st.markdown("---")
     
     # Exportar dados
-    if st.button("📥 Exportar Análise", use_container_width=True):
+    if st.button("📥 Exportar Análise", width='stretch'):
         export_data = {
             'timestamp': analysis['analysis_timestamp'],
             'summary': analysis['summary'],

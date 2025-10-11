@@ -10,6 +10,15 @@ from datetime import datetime
 import pandas as pd
 
 
+def check_api_status():
+    """Verifica se a API está rodando e acessível"""
+    try:
+        response = requests.get("http://localhost:8000/health", timeout=2)
+        return response.status_code == 200
+    except (requests.exceptions.RequestException, requests.exceptions.Timeout):
+        return False
+
+
 def show_api_documentation():
     """Página principal de documentação da API"""
     
@@ -96,24 +105,54 @@ def show_api_overview():
         {"Código": "500", "Status": "Internal Server Error", "Descrição": "Erro interno do servidor"}
     ])
     
-    st.dataframe(status_codes, use_container_width=True, hide_index=True)
+    st.dataframe(status_codes, width='stretch', hide_index=True)
     
     # Links úteis
     st.markdown("### 🔗 Links Úteis")
     
+    # Verificar se a API está rodando
+    api_status = check_api_status()
+    
+    if not api_status:
+        st.warning("⚠️ A API não está rodando. Para acessar os links, inicie a API primeiro:")
+        st.code("cd radar_sinistro && python start_api_simple.bat", language="bash")
+        st.markdown("ou execute: `python -m uvicorn api.main:app --reload --port 8000`")
+        st.markdown("---")
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        if st.button("📖 Swagger UI", use_container_width=True):
-            st.markdown("[Abrir Swagger UI](http://localhost:8000/docs)")
+        if api_status:
+            st.link_button(
+                "📖 Swagger UI", 
+                "http://localhost:8000/docs",
+                width='stretch'
+            )
+        else:
+            st.button("📖 Swagger UI", disabled=True, width='stretch')
+            st.caption("API não disponível")
     
     with col2:
-        if st.button("📚 ReDoc", use_container_width=True):
-            st.markdown("[Abrir ReDoc](http://localhost:8000/redoc)")
+        if api_status:
+            st.link_button(
+                "📚 ReDoc", 
+                "http://localhost:8000/redoc",
+                width='stretch'
+            )
+        else:
+            st.button("📚 ReDoc", disabled=True, width='stretch')
+            st.caption("API não disponível")
     
     with col3:
-        if st.button("❤️ Health Check", use_container_width=True):
-            st.markdown("[Verificar Status](http://localhost:8000/health)")
+        if api_status:
+            st.link_button(
+                "❤️ Health Check", 
+                "http://localhost:8000/health",
+                width='stretch'
+            )
+        else:
+            st.button("❤️ Health Check", disabled=True, width='stretch')
+            st.caption("API não disponível")
 
 
 def show_risk_endpoints():
@@ -214,7 +253,7 @@ def show_policies_endpoints():
         {"Parâmetro": "segurado", "Tipo": "string", "Padrão": "null", "Descrição": "Buscar por nome do segurado"}
     ])
     
-    st.dataframe(params_df, use_container_width=True, hide_index=True)
+    st.dataframe(params_df, width='stretch', hide_index=True)
     
     # Buscar apólice específica
     st.subheader("2. Buscar Apólice")
@@ -295,7 +334,7 @@ def show_coverages_endpoints():
         {"Parâmetro": "score_max", "Tipo": "float", "Descrição": "Score máximo de risco (0-100)"}
     ])
     
-    st.dataframe(risk_params_df, use_container_width=True, hide_index=True)
+    st.dataframe(risk_params_df, width='stretch', hide_index=True)
     
     # Coberturas de uma apólice
     st.subheader("3. Coberturas de uma Apólice")
@@ -380,7 +419,32 @@ def test_api_connection(base_url):
             
     except requests.exceptions.RequestException as e:
         st.error(f"❌ Erro de conexão: {str(e)}")
-        st.info("💡 Certifique-se de que a API está rodando: `uvicorn api.main:app --reload`")
+        
+        # Instruções detalhadas para iniciar a API
+        with st.expander("💡 Como iniciar a API", expanded=True):
+            st.markdown("""
+            **Opção 1 - Script automatizado:**
+            ```bash
+            start_api_simple.bat
+            ```
+            
+            **Opção 2 - Comando direto:**
+            ```bash
+            python -m uvicorn api.main:app --reload --port 8000
+            ```
+            
+            **Opção 3 - Com configurações avançadas:**
+            ```bash
+            start_api.bat
+            ```
+            
+            Após iniciar a API, os endpoints estarão disponíveis em:
+            - 📖 Swagger UI: http://localhost:8000/docs
+            - 📚 ReDoc: http://localhost:8000/redoc
+            - ❤️ Health: http://localhost:8000/health
+            """)
+            
+            st.info("🔄 Aguarde alguns segundos para a API inicializar completamente.")
 
 
 def test_health_check(base_url):

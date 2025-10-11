@@ -3378,7 +3378,6 @@ def render_navigation():
     page = st.sidebar.selectbox(
         "Selecione uma seção:",
         [
-            "🏠 Dashboard Principal",
             "🎯 Análise de Riscos", 
             "📋 Gestão de Apólices",
             "📊 Coberturas em Risco",
@@ -3401,9 +3400,7 @@ def render_selected_page(page: str):
     Args:
         page: Nome da página selecionada
     """
-    if page == "🏠 Dashboard Principal":
-        show_dashboard_main()
-    elif page == "🎯 Análise de Riscos":
+    if page == "🎯 Análise de Riscos":
         show_policies_at_risk()  # Mapear para análise de riscos existente
     elif page == "📋 Gestão de Apólices":
         show_manage_policies()
@@ -3419,35 +3416,6 @@ def render_selected_page(page: str):
         show_code_examples()
     elif page == "⚙️ Configurações":
         show_settings()
-
-
-def show_dashboard_main():
-    """Dashboard principal com visão geral do sistema"""
-    st.header("🏠 Dashboard Principal")
-    
-    # Métricas principais
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        total_policies = safe_get_total_policies()
-        st.metric("📋 Apólices Ativas", total_policies, "🔼 +12")
-    
-    with col2:
-        active_alerts = safe_get_active_alerts_count()
-        st.metric("⚠️ Alertas Ativos", active_alerts, "🔻 -3")
-        
-    with col3:
-        st.metric("🌦️ Monitoramento", "Ativo", "✅")
-        
-    with col4:
-        coverage_count = safe_get_coverage_count()
-        st.metric("📊 Coberturas", coverage_count, "➡️ 0")
-    
-    # Gráficos resumo
-    st.subheader("📊 Visão Geral dos Riscos")
-    
-    # Mostrar resumo das coberturas em risco
-    show_policies_at_risk()
 
 
 def safe_get_total_policies():

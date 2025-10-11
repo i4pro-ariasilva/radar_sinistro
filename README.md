@@ -118,39 +118,137 @@ python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
 ```
 radar_sinistro/
-├── app.py                      # Interface web principal (Streamlit)
-├── policy_management.py        # Gestão de apólices
-├── config.py                   # Configurações do sistema
-├── requirements.txt            # Dependências Python
-├── requirements_api.txt        # Dependências específicas da API
-├── start_api.bat              # Script de inicialização da API
-├── start_api_simple.bat       # Script simples da API
-├── api/                       # Sistema de API REST
-│   ├── main.py               # Aplicação FastAPI principal
-│   ├── models/               # Modelos Pydantic
-│   ├── routes/               # Endpoints da API
-│   └── services/             # Lógica de negócio
-├── pages/                     # Páginas da documentação da API
-│   ├── api_documentation.py  # Documentação interativa
-│   └── api_code_examples.py  # Exemplos de código
-├── database/                  # Módulos do banco de dados
-│   ├── models.py             # Modelos SQLAlchemy
-│   ├── crud_operations.py    # Operações CRUD
-│   ├── database.py           # Configuração do banco
-│   └── radar_sinistro.db     # Banco SQLite
-├── src/                       # Código fonte organizado
-│   ├── ml/                   # Modelos de Machine Learning
-│   │   └── coverage_predictors/  # Preditores por cobertura
-│   ├── data_processing/      # Processamento de dados
-│   ├── weather/              # Serviços climáticos
-│   └── viz/                  # Visualizações
-├── models/                    # Modelos ML treinados (*.pkl)
-├── data/                      # Dados do sistema
-│   ├── sample/               # Dados de amostra
-│   └── training/             # Dados de treinamento
-├── docs/                      # Documentação técnica
-├── scripts/                   # Scripts utilitários
-└── config/                    # Configurações adicionais
+├── app.py                          # Interface web principal (Streamlit)
+├── policy_management.py            # Gestão de apólices
+├── web_ml_integration.py           # Integração ML com interface web
+├── config.py                       # Configurações do sistema
+├── main.py                         # Script principal alternativo
+├── requirements.txt                # Dependências Python core
+├── requirements_api.txt            # Dependências específicas da API
+├── .env.example                    # Exemplo de variáveis de ambiente
+├── LICENSE                         # Licença do projeto
+├── PROJETO_PREPARADO.md           # Documentação de preparação
+├── RESUMO_COMMIT.md               # Resumo das atualizações
+├── template_apolices_exemplo.csv   # Template para upload de apólices
+├── train_coverage_models.py        # Script de treinamento de modelos
+├── run_api.py                      # Executor da API
+├── run_migration.py                # Script de migração do banco
+├── setup_demo_data.py              # Dados de demonstração
+├── start_api.bat                   # Script de inicialização da API
+├── start_api_simple.bat           # Script simples da API
+├── start_radar_sinistro.bat       # Script principal do sistema
+├── start_advanced.bat             # Script avançado
+├── run.bat                         # Script de execução
+├── api/                           # Sistema de API REST completa
+│   ├── main.py                   # Aplicação FastAPI principal
+│   ├── models/                   # Modelos Pydantic
+│   │   ├── requests.py          # Modelos de requisição
+│   │   └── responses.py         # Modelos de resposta
+│   ├── routes/                   # Endpoints da API
+│   │   ├── __init__.py         # Inicialização das rotas
+│   │   ├── coverages.py        # Endpoints de coberturas
+│   │   ├── policies.py         # Endpoints de apólices
+│   │   └── risk.py             # Endpoints de análise de risco
+│   └── services/                 # Lógica de negócio
+│       ├── coverage_service.py  # Serviços de cobertura
+│       ├── policy_service.py    # Serviços de apólices
+│       └── risk_service.py      # Serviços de risco
+├── pages/                         # Páginas da documentação da API
+│   ├── api_documentation.py      # Documentação interativa
+│   └── api_code_examples.py      # Exemplos de código
+├── database/                      # Sistema de banco de dados
+│   ├── __init__.py               # Inicialização do módulo
+│   ├── models.py                 # Modelos SQLAlchemy
+│   ├── database.py               # Configuração e conexão do banco
+│   ├── crud_operations.py        # Operações CRUD
+│   ├── cobertura_risco_dao.py    # DAO específico para coberturas
+│   ├── region_block_extensions.py # Extensões de bloqueio regional
+│   ├── sample_data_generator.py   # Gerador de dados de exemplo
+│   ├── init_db.sql               # Script de inicialização SQL
+│   ├── migration_cobertura_risco.sql # Migração de coberturas
+│   └── radar_sinistro.db         # Banco SQLite principal
+├── src/                           # Código fonte organizado
+│   ├── __init__.py               # Inicialização do módulo
+│   ├── api/                      # Componentes adicionais da API
+│   ├── ml/                       # Machine Learning e IA
+│   │   ├── feature_engineering.py    # Engenharia de features
+│   │   ├── coverage_model_trainer.py # Treinador de modelos
+│   │   ├── data_simulator.py         # Simulador de dados
+│   │   └── coverage_predictors/      # Preditores especializados
+│   │       ├── __init__.py          # Inicialização dos preditores
+│   │       ├── base_predictor.py    # Classe base dos preditores
+│   │       ├── coverage_manager.py  # Gerenciador de coberturas
+│   │       ├── alagamento.py        # Preditor de alagamento
+│   │       ├── vendaval.py          # Preditor de vendaval
+│   │       ├── granizo.py           # Preditor de granizo
+│   │       └── danos_eletricos.py   # Preditor de danos elétricos
+│   ├── data_processing/          # Processamento de dados
+│   │   ├── __init__.py          # Inicialização do módulo
+│   │   ├── data_cleaner.py      # Limpeza de dados
+│   │   ├── data_validator.py    # Validação de dados
+│   │   ├── file_loaders.py      # Carregadores de arquivo
+│   │   └── policy_data_processor.py # Processador de apólices
+│   ├── weather/                  # Serviços climáticos
+│   │   ├── __init__.py          # Inicialização do módulo
+│   │   ├── weather_service.py   # Serviço principal do clima
+│   │   ├── weather_models.py    # Modelos de dados climáticos
+│   │   ├── weather_cache.py     # Cache de dados climáticos
+│   │   └── openmeteo_client.py  # Cliente OpenMeteo API
+│   ├── geo/                      # Processamento geográfico
+│   ├── risk/                     # Análise de riscos
+│   └── viz/                      # Visualizações
+├── models/                        # Modelos ML treinados
+│   ├── alagamento_model.pkl      # Modelo de alagamento
+│   ├── vendaval_model.pkl        # Modelo de vendaval
+│   ├── granizo_model.pkl         # Modelo de granizo
+│   ├── danos_eletricos_model.pkl # Modelo de danos elétricos
+│   ├── radar_model.pkl           # Modelo principal
+│   ├── feature_columns.pkl       # Colunas de features
+│   ├── label_encoders.pkl        # Codificadores de labels
+│   ├── model_metadata.pkl        # Metadados dos modelos
+│   ├── scaler.pkl               # Normalizador de dados
+│   └── reports/                  # Relatórios de treinamento
+│       ├── alagamento_training_report.txt
+│       ├── vendaval_training_report.txt
+│       ├── granizo_training_report.txt
+│       ├── danos_eletricos_training_report.txt
+│       └── training_summary.txt
+├── data/                          # Dados do sistema
+│   ├── cache/                    # Cache de dados
+│   ├── exports/                  # Dados exportados
+│   ├── processed/                # Dados processados
+│   ├── raw/                      # Dados brutos
+│   ├── sample/                   # Dados de amostra
+│   │   ├── sample_claims.csv     # Sinistros de exemplo
+│   │   ├── sample_climate_data.csv # Dados climáticos de exemplo
+│   │   └── sample_policies.csv   # Apólices de exemplo
+│   └── training/                 # Dados de treinamento ML
+│       ├── alagamento_training_data.csv
+│       ├── vendaval_training_data.csv
+│       ├── granizo_training_data.csv
+│       ├── danos_eletricos_training_data.csv
+│       └── *_training_data_stats.txt
+├── docs/                          # Documentação técnica
+│   ├── API_COBERTURAS.md        # Documentação da API de coberturas
+│   ├── COMO_EXECUTAR_API.md     # Guia de execução da API
+│   └── ESTRUTURA_MODULAR_COBERTURAS.md
+├── scripts/                       # Scripts utilitários
+│   ├── clear_notifications.py    # Limpeza de notificações
+│   └── manage_blocks.py          # Gerenciamento de bloqueios
+├── config/                        # Configurações do sistema
+│   ├── __init__.py              # Inicialização
+│   ├── settings.py              # Configurações principais
+│   ├── database_config.py       # Configurações do banco
+│   └── notification_templates.py # Templates de notificação
+├── services/                      # Serviços auxiliares
+├── utils/                         # Utilitários gerais
+├── tests/                         # Testes automatizados
+├── frontend/                      # Assets do frontend
+│   ├── assets/                   # Recursos estáticos
+│   ├── css/                      # Estilos CSS
+│   └── js/                       # JavaScript
+├── weather_cache.db              # Cache local do clima
+└── dados_radar_sinistro.db       # Banco secundário
 ```
 
 ## 🔗 API REST
